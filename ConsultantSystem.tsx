@@ -68,12 +68,48 @@ const formatCurrency = (value: number) => {
     }).format(value);
 };
 
+// --- Centralized Mock Data (Knowledge Base) ---
+const SYSTEM_DATA = {
+    materials: [
+        { id: 1, title: 'IMAGEM PARA STORY', category: 'Produtos', type: 'image' },
+        { id: 2, title: 'TEXTO DE VENDAS', category: 'Textos Prontos', type: 'text' },
+        { id: 3, title: 'BANNER PROMO', category: 'Promoções', type: 'image' },
+        { id: 4, title: 'LOGO MARCA', category: 'Empresa', type: 'image' },
+        { id: 5, title: 'CATÁLOGO 2025', category: 'Produtos', type: 'pdf' },
+        { id: 6, title: 'STORY BOM DIA', category: 'Textos Prontos', type: 'image' },
+    ],
+    lessons: [
+        { id: 1, title: 'Técnicas de Fechamento', category: 'Técnicas de Venda', duration: '12 min', thumbnail: 'bg-blue-100' },
+        { id: 2, title: 'Tudo sobre a Pomada', category: 'Produtos', duration: '25 min', thumbnail: 'bg-green-100' },
+        { id: 3, title: 'Liderança Eficaz', category: 'Liderança', duration: '45 min', thumbnail: 'bg-purple-100' },
+        { id: 4, title: 'Como abordar clientes', category: 'Técnicas de Venda', duration: '15 min', thumbnail: 'bg-blue-50' },
+    ],
+    team: [
+        { id: '007053', name: 'Cleide Maia', role: 'Consultor', status: 'Ativo', sales: 'R$ 1.250,00', phone: '5511999999999' },
+        { id: '102031', name: 'João Santos', role: 'Consultor', status: 'Ativo', sales: 'R$ 1.200,00', phone: '5511988888888' },
+        { id: '102032', name: 'Ana Costa', role: 'Consultor', status: 'Inativo', sales: 'R$ 0,00', phone: '5511977777777' },
+        { id: '102033', name: 'Pedro Alves', role: 'Líder', status: 'Ativo', sales: 'R$ 3.450,00', phone: '5511966666666' },
+        { id: '102034', name: 'Carla Lima', role: 'Consultor', status: 'Ativo', sales: 'R$ 525,00', phone: '5511955555555' },
+        { id: '102035', name: 'Marcos Rocha', role: 'Consultor', status: 'Inativo', sales: 'R$ 0,00', phone: '5511944444444' },
+    ],
+    orders: [
+        { id: 'PED-9021', date: '26/11/2025', items: '2x Caixa Master - Pomada Copaíba', total: 'R$ 420,00', status: 'Em trânsito' },
+        { id: 'PED-8832', date: '10/11/2025', items: '5x Caixa Master - Pomada Copaíba', total: 'R$ 1.050,00', status: 'Entregue' },
+        { id: 'PED-7543', date: '01/11/2025', items: '1x Caixa Master - Pomada Copaíba', total: 'R$ 255,90', status: 'Entregue' },
+        { id: 'PED-6201', date: '25/10/2025', items: '3x Caixa Master - Pomada Copaíba', total: 'R$ 675,90', status: 'Entregue' },
+    ],
+    financial: {
+        balance: 3450.00,
+        pendingWithdrawals: 0
+    }
+};
+
 // --- Components ---
 
-const JoAssistant = ({ setActiveTab }: { setActiveTab: (tab: string) => void }) => {
+const JoAssistant = ({ setActiveTab, consultant }: { setActiveTab: (tab: string) => void, consultant: Consultant }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [messages, setMessages] = useState<{ sender: 'user' | 'bot', text: string }[]>([
-        { sender: 'bot', text: 'Olá! Sou a Jô, sua assistente virtual. Como posso ajudar você hoje?' }
+        { sender: 'bot', text: `Olá ${consultant.name.split(' ')[0]}! Sou a Jô. Posso te ajudar com navegação, dúvidas sobre pedidos, equipe, financeiro e muito mais. O que precisa?` }
     ]);
     const [inputText, setInputText] = useState('');
     const [isListening, setIsListening] = useState(false);
@@ -124,53 +160,119 @@ const JoAssistant = ({ setActiveTab }: { setActiveTab: (tab: string) => void }) 
 
     const speak = (text: string) => {
         if ('speechSynthesis' in window) {
-            // Cancel any ongoing speech
             window.speechSynthesis.cancel();
-            
             const utterance = new SpeechSynthesisUtterance(text);
             utterance.lang = 'pt-BR';
-            // Try to find a female Portuguese voice if available
-            const voices = window.speechSynthesis.getVoices();
-            const ptVoice = voices.find(v => v.lang.includes('pt') && v.name.includes('Google'));
-            if (ptVoice) utterance.voice = ptVoice;
             
+            const voices = window.speechSynthesis.getVoices();
+            // Prioritize known female voices
+            const femaleVoice = voices.find(v => 
+                v.name.includes('Google Português do Brasil') || 
+                v.name.includes('Microsoft Maria') || 
+                v.name.includes('Luciana')
+            );
+            
+            // Fallback to Google PT or any PT
+            const selectedVoice = femaleVoice || voices.find(v => v.lang.includes('pt') && v.name.includes('Google')) || voices.find(v => v.lang.includes('pt'));
+
+            if (selectedVoice) {
+                utterance.voice = selectedVoice;
+            }
+            
+            // Slight pitch adjustment to ensure feminine tone
+            utterance.pitch = 1.1;
+
             window.speechSynthesis.speak(utterance);
         }
     };
 
     const processCommand = (text: string) => {
-        const lowerText = text.toLowerCase();
+        const lower = text.toLowerCase();
         let response = '';
 
-        // Keyword Matching Logic
-        if (lowerText.includes('venda') || lowerText.includes('pedido') || lowerText.includes('comprar')) {
-            setActiveTab('new_order');
-            response = 'Abri a aba de novos pedidos para você. Aproveite as promoções de caixa master!';
-        } else if (lowerText.includes('histórico') || lowerText.includes('meus pedidos') || lowerText.includes('acompanhar')) {
-            setActiveTab('my_orders');
-            response = 'Aqui está seu histórico de pedidos. Você pode ver detalhes e status de entrega.';
-        } else if (lowerText.includes('material') || lowerText.includes('foto') || lowerText.includes('post') || lowerText.includes('marketing')) {
-            setActiveTab('materials');
-            response = 'Levei você para os Materiais de Apoio. Tem posts novos para o Instagram!';
-        } else if (lowerText.includes('aula') || lowerText.includes('curso') || lowerText.includes('aprender') || lowerText.includes('treinamento')) {
-            setActiveTab('unibrotos');
-            response = 'Acesse a UniBrotos para ver os treinamentos disponíveis.';
-        } else if (lowerText.includes('equipe') || lowerText.includes('time') || lowerText.includes('consultores')) {
-            setActiveTab('business');
-            response = 'Mostrando a gestão do seu time. Acompanhe o desempenho da sua rede.';
-        } else if (lowerText.includes('financeiro') || lowerText.includes('saque') || lowerText.includes('bônus') || lowerText.includes('dinheiro')) {
-            setActiveTab('financial');
-            response = 'Abri o painel financeiro. Você pode solicitar saques e ver seus bônus aqui.';
-        } else if (lowerText.includes('convidar') || lowerText.includes('indicar') || lowerText.includes('link')) {
-            setActiveTab('invite');
-            response = 'Aqui está sua página de convite. Copie seu link exclusivo para cadastrar novos consultores.';
-        } else if (lowerText.includes('olá') || lowerText.includes('oi') || lowerText.includes('bom dia') || lowerText.includes('boa tarde')) {
-            response = 'Olá! Tudo bem? Como posso te ajudar hoje no sistema Brotos da Terra?';
-        } else {
-            response = 'Desculpe, não entendi exatamente. Posso te ajudar a navegar para Pedidos, Financeiro, Equipe ou Materiais. O que prefere?';
+        // --- Navigation Logic ---
+        if (lower.includes('abrir') || lower.includes('ir para') || lower.includes('navegar')) {
+            if (lower.includes('venda') || lower.includes('pedido')) {
+                setActiveTab('new_order');
+                return 'Abrindo a aba de Novos Pedidos.';
+            }
+            if (lower.includes('histórico') || lower.includes('meus pedidos')) {
+                setActiveTab('my_orders');
+                return 'Abrindo seu Histórico de Pedidos.';
+            }
+            if (lower.includes('material') || lower.includes('marketing')) {
+                setActiveTab('materials');
+                return 'Acessando Materiais de Apoio.';
+            }
+            if (lower.includes('unibrotos') || lower.includes('aula') || lower.includes('curso')) {
+                setActiveTab('unibrotos');
+                return 'Indo para a UniBrotos.';
+            }
+            if (lower.includes('financeiro') || lower.includes('saque')) {
+                setActiveTab('financial');
+                return 'Abrindo painel Financeiro.';
+            }
+            if (lower.includes('equipe') || lower.includes('time')) {
+                setActiveTab('business');
+                return 'Mostrando gestão de Equipe.';
+            }
+            if (lower.includes('convite') || lower.includes('convidar')) {
+                setActiveTab('invite');
+                return 'Indo para página de Indicação.';
+            }
         }
 
-        return response;
+        // --- Data Query Logic ---
+        
+        // Orders
+        if (lower.includes('último pedido') || lower.includes('status do pedido')) {
+            const lastOrder = SYSTEM_DATA.orders[0];
+            return `Seu último pedido foi o #${lastOrder.id} feito em ${lastOrder.date}. O status atual é: ${lastOrder.status}.`;
+        }
+        if (lower.includes('frete') && lower.includes('grátis')) {
+            return 'O frete é grátis a partir de 4 caixas. Aproveite para montar um estoque maior!';
+        }
+
+        // Team
+        if (lower.includes('quantos') && (lower.includes('equipe') || lower.includes('time') || lower.includes('consultores'))) {
+            const total = SYSTEM_DATA.team.length;
+            const active = SYSTEM_DATA.team.filter(m => m.status === 'Ativo').length;
+            return `Você possui ${total} membros na sua rede, sendo ${active} ativos atualmente.`;
+        }
+        if (lower.includes('cleide') || lower.includes('joão')) {
+            // Simple search simulation
+            return 'Encontrei esse consultor na sua base. Navegue até a aba "Meu Negócio" para ver detalhes de contato.';
+        }
+
+        // Financial
+        if (lower.includes('saldo') || lower.includes('dinheiro') || lower.includes('receber')) {
+            return `Seu saldo disponível para saque é de ${formatCurrency(SYSTEM_DATA.financial.balance)}. Você pode solicitar o saque na aba Financeiro.`;
+        }
+        if (lower.includes('cnpj')) {
+            return 'Sim, para receber bônus de liderança é necessário cadastrar um CNPJ na aba Financeiro.';
+        }
+
+        // Materials & Training
+        if (lower.includes('material') && (lower.includes('instagram') || lower.includes('foto'))) {
+            const count = SYSTEM_DATA.materials.filter(m => m.type === 'image').length;
+            return `Temos ${count} novas imagens prontas para postar no Instagram na aba Materiais de Apoio.`;
+        }
+        if (lower.includes('aula') || lower.includes('aprender')) {
+            return 'Na UniBrotos temos aulas sobre Técnicas de Venda, Produtos e Liderança. Recomendo começar por "Técnicas de Fechamento".';
+        }
+
+        // Consultant Info
+        if (lower.includes('meu id') || lower.includes('minha conta')) {
+            return `Seu ID de consultor é ${consultant.id} e seu nível atual é ${consultant.role === 'admin' ? 'Administrador' : 'Consultor'}.`;
+        }
+
+        // General Greetings
+        if (lower.includes('oi') || lower.includes('olá')) {
+            return `Olá ${consultant.name}! Estou pronta para ajudar. Pergunte sobre seus pedidos, equipe ou saldo.`;
+        }
+
+        // Fallback
+        return 'Entendi partes do que disse, mas posso ter perdido o contexto. Tente perguntar "Quanto eu vendi?" ou "Ir para Financeiro".';
     };
 
     const handleSendMessage = (text = inputText) => {
@@ -239,7 +341,7 @@ const JoAssistant = ({ setActiveTab }: { setActiveTab: (tab: string) => void }) 
                             value={inputText}
                             onChange={(e) => setInputText(e.target.value)}
                             onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-                            placeholder="Digite ou fale..."
+                            placeholder="Pergunte sobre pedidos, equipe..."
                             className="flex-1 bg-gray-50 border-none rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-brand-green-mid/20 outline-none"
                         />
                         <button 
@@ -268,25 +370,20 @@ const JoAssistant = ({ setActiveTab }: { setActiveTab: (tab: string) => void }) 
 const OrderDetailsModal = ({ order, onClose }: { order: any, onClose: () => void }) => {
     if (!order) return null;
 
-    // Mock parsing the item string to get quantity for calculation simulation
     const qtyMatch = order.items.match(/(\d+)x/);
     const qty = qtyMatch ? parseInt(qtyMatch[1]) : 1;
     const unitPrice = 210.00;
     const subtotal = qty * unitPrice;
-    const shipping = order.total.includes('420,00') || order.total.includes('1.050,00') || order.total.includes('675,90') ? 0 : 45.90; // Mock logic based on total
+    const shipping = order.total.includes('420,00') || order.total.includes('1.050,00') || order.total.includes('675,90') ? 0 : 45.90; 
 
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 animate-fade-in">
-            {/* Backdrop */}
             <div 
                 className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" 
                 onClick={onClose}
             ></div>
 
-            {/* Modal Content */}
             <div className="bg-white rounded-[2rem] w-full max-w-3xl relative z-10 overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
-                
-                {/* Header */}
                 <div className="bg-gray-50 px-8 py-6 border-b border-gray-100 flex justify-between items-center">
                     <div>
                         <div className="flex items-center gap-3">
@@ -309,14 +406,10 @@ const OrderDetailsModal = ({ order, onClose }: { order: any, onClose: () => void
                     </button>
                 </div>
 
-                {/* Body */}
                 <div className="p-8 overflow-y-auto custom-scrollbar">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
-                        {/* Shipping Info */}
                         <div className="md:col-span-2 space-y-6">
                             <h4 className="text-sm font-extrabold text-gray-400 uppercase tracking-widest mb-4">Itens do Pedido</h4>
-                            
-                            {/* Product Item */}
                             <div className="flex gap-4 p-4 rounded-2xl border border-gray-100 bg-gray-50/50 hover:bg-white hover:shadow-md transition-all">
                                 <div className="h-20 w-20 bg-white rounded-xl p-2 border border-gray-100 shrink-0">
                                     <img src="https://i.imgur.com/yNKoBxr.png" alt="Product" className="w-full h-full object-contain" />
@@ -332,7 +425,6 @@ const OrderDetailsModal = ({ order, onClose }: { order: any, onClose: () => void
                             </div>
                         </div>
 
-                        {/* Delivery Info */}
                         <div className="space-y-6">
                             <h4 className="text-sm font-extrabold text-gray-400 uppercase tracking-widest mb-4">Entrega</h4>
                             <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100">
@@ -356,7 +448,6 @@ const OrderDetailsModal = ({ order, onClose }: { order: any, onClose: () => void
                         </div>
                     </div>
 
-                    {/* Financial Summary */}
                     <div className="bg-gray-50 rounded-2xl p-6 border border-gray-100">
                          <div className="space-y-3">
                             <div className="flex justify-between text-sm text-gray-500">
@@ -376,7 +467,6 @@ const OrderDetailsModal = ({ order, onClose }: { order: any, onClose: () => void
                     </div>
                 </div>
 
-                {/* Footer */}
                 <div className="px-8 py-4 bg-gray-50 border-t border-gray-100 flex justify-between items-center">
                     <button className="text-sm font-bold text-gray-500 hover:text-brand-green-dark flex items-center gap-2 transition-colors">
                         <DownloadIcon className="h-4 w-4" />
@@ -416,7 +506,6 @@ const EarningsSimulator = () => {
                 </div>
             </div>
 
-            {/* Static Examples Row */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
                 {[2, 5, 10].map((units) => (
                     <div key={units} className="bg-[#1F2937] rounded-2xl p-6 border border-[#374151] hover:border-[#4ADE80]/30 transition-colors">
@@ -431,7 +520,6 @@ const EarningsSimulator = () => {
                 ))}
             </div>
 
-            {/* Interactive Slider Section */}
             <div className="bg-[#1F2937] rounded-2xl p-8 border border-[#374151]">
                 <div className="text-center mb-8">
                     <h4 className="text-lg font-bold text-white mb-6">Quanto você quer ganhar este mês?</h4>
@@ -474,10 +562,8 @@ const BusinessModelSection = () => {
     return (
         <div className="flex flex-col gap-6">
             <div className="bg-[#2E5C31] text-white p-8 md:p-12 rounded-[2rem] flex flex-col lg:flex-row gap-12 items-center shadow-2xl overflow-hidden relative transition-all duration-500">
-                {/* Background Glow Effect */}
                 <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-green-900/20 blur-[100px] rounded-full pointer-events-none -translate-y-1/2 translate-x-1/2"></div>
 
-                {/* Left Content */}
                 <div className="flex-1 space-y-8 relative z-10 w-full">
                     <span className="inline-block px-4 py-1.5 rounded-full bg-[#1F2937] text-[#4ADE80] text-xs font-extrabold tracking-widest uppercase border border-[#374151]">
                         Modelo de Negócio
@@ -525,11 +611,9 @@ const BusinessModelSection = () => {
                     </div>
                 </div>
 
-                {/* Right Card */}
                 <div className="flex-1 w-full max-w-md relative z-10">
                     <div className="bg-[#0F1115] p-8 rounded-[2rem] border border-[#1F2937] shadow-xl relative overflow-hidden h-full min-h-[420px] flex flex-col">
                         
-                        {/* Top Tabs */}
                         <div className="flex bg-[#050608] p-1.5 rounded-xl mb-10 border border-[#1F2937]">
                             <button 
                                 onClick={() => setMode('sales')}
@@ -602,7 +686,6 @@ const BusinessModelSection = () => {
                 </div>
             </div>
 
-            {/* Earnings Simulator - Appears when Sales Mode is active */}
             {mode === 'sales' && <EarningsSimulator />}
         </div>
     );
@@ -976,10 +1059,10 @@ const DashboardShell = ({ consultant, children, onLogout }: DashboardShellProps)
     };
 
     return (
-        <div className="flex h-screen bg-gray-50 font-sans transition-colors duration-500 relative">
+        <div className="flex h-screen bg-gray-50 font-sans transition-colors duration-500 relative overflow-hidden">
             
             {/* AI Assistant - Rendered Globally */}
-            <JoAssistant setActiveTab={setActiveTab} />
+            <JoAssistant setActiveTab={setActiveTab} consultant={consultant} />
 
             {/* Locked Content Toast Notification */}
             {showLockedToast && (
@@ -994,20 +1077,37 @@ const DashboardShell = ({ consultant, children, onLogout }: DashboardShellProps)
                 </div>
             )}
 
-            {/* Mobile Header */}
-            <div className="md:hidden fixed top-0 w-full bg-brand-green-dark z-50 px-4 py-3 flex items-center justify-between shadow-md">
-                 <div className="bg-white rounded-lg p-1">
+            {/* Mobile Header - Adjusted for requested layout */}
+            <div className="md:hidden fixed top-0 w-full bg-brand-green-dark z-50 px-4 h-16 flex items-center justify-between shadow-md">
+                 {/* Left: Menu Trigger (3 dots/lines) */}
+                 <button 
+                    onClick={() => setIsMobileMenuOpen(true)} 
+                    className="text-white p-1 rounded-md hover:bg-white/10 transition-colors"
+                 >
+                     <MenuIcon className="h-8 w-8" />
+                 </button>
+
+                 {/* Center: Logo */}
+                 <div className="bg-white rounded-lg p-1.5 shadow-sm absolute left-1/2 transform -translate-x-1/2">
                     <BrandLogo className="h-8 w-auto" />
                  </div>
-                 <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="text-white">
-                     {isMobileMenuOpen ? <CloseIcon /> : <MenuIcon />}
-                 </button>
+
+                 {/* Right: Spacer for balance */}
+                 <div className="w-8"></div>
             </div>
+
+            {/* Backdrop for Mobile Menu */}
+            {isMobileMenuOpen && (
+                <div 
+                    className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] md:hidden transition-opacity duration-300"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                />
+            )}
 
             {/* Sidebar - Desktop & Mobile Drawer */}
             <aside className={`
-                fixed inset-y-0 left-0 z-40 w-72 transform transition-transform duration-300 ease-in-out
-                md:relative md:translate-x-0
+                fixed inset-y-0 left-0 z-[70] w-72 transform transition-transform duration-300 ease-in-out
+                md:relative md:translate-x-0 md:z-40
                 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}
                 bg-[#2E5C31] shadow-2xl overflow-y-auto
             `}>
@@ -1076,7 +1176,7 @@ const DashboardShell = ({ consultant, children, onLogout }: DashboardShellProps)
             </aside>
 
             {/* Main Content Area */}
-            <main className="flex-1 overflow-y-auto pt-16 md:pt-0 bg-gray-50 p-4 md:p-8">
+            <main className="flex-1 overflow-y-auto pt-20 md:pt-0 bg-gray-50 p-4 md:p-8 w-full">
                  {childrenWithProps}
             </main>
         </div>
@@ -1092,49 +1192,15 @@ const Dashboard = ({ activeTab, setActiveTab, consultant }: { activeTab?: string
     const [materialCategory, setMaterialCategory] = useState('Todos');
     const materialsCategories = ['Todos', 'Produtos', 'Empresa', 'Textos Prontos', 'Promoções'];
 
-    // Mock Materials
-    const mockMaterials = [
-        { id: 1, title: 'IMAGEM PARA STORY', category: 'Produtos', type: 'image' },
-        { id: 2, title: 'TEXTO DE VENDAS', category: 'Textos Prontos', type: 'text' },
-        { id: 3, title: 'BANNER PROMO', category: 'Promoções', type: 'image' },
-        { id: 4, title: 'LOGO MARCA', category: 'Empresa', type: 'image' },
-        { id: 5, title: 'CATÁLOGO 2025', category: 'Produtos', type: 'pdf' },
-        { id: 6, title: 'STORY BOM DIA', category: 'Textos Prontos', type: 'image' },
-    ];
-
-    const filteredMaterials = materialCategory === 'Todos' ? mockMaterials : mockMaterials.filter(m => m.category === materialCategory);
+    // Using Centralized Mock Data
+    const filteredMaterials = materialCategory === 'Todos' ? SYSTEM_DATA.materials : SYSTEM_DATA.materials.filter(m => m.category === materialCategory);
 
     // State for UniBrotos Filter
     const [uniCategory, setUniCategory] = useState('Todas as Aulas');
     const uniCategories = ['Todas as Aulas', 'Técnicas de Venda', 'Produtos', 'Liderança'];
 
-    // Mock Lessons
-    const mockLessons = [
-        { id: 1, title: 'Técnicas de Fechamento', category: 'Técnicas de Venda', duration: '12 min', thumbnail: 'bg-blue-100' },
-        { id: 2, title: 'Tudo sobre a Pomada', category: 'Produtos', duration: '25 min', thumbnail: 'bg-green-100' },
-        { id: 3, title: 'Liderança Eficaz', category: 'Liderança', duration: '45 min', thumbnail: 'bg-purple-100' },
-        { id: 4, title: 'Como abordar clientes', category: 'Técnicas de Venda', duration: '15 min', thumbnail: 'bg-blue-50' },
-    ];
-
-    const filteredLessons = uniCategory === 'Todas as Aulas' ? mockLessons : mockLessons.filter(l => l.category === uniCategory);
-
-    // Mock Team Data for Business Tab
-    const teamMembers = [
-        { id: '007053', name: 'Cleide Maia', role: 'Consultor', status: 'Ativo', sales: 'R$ 1.250,00', phone: '5511999999999' },
-        { id: '102031', name: 'João Santos', role: 'Consultor', status: 'Ativo', sales: 'R$ 1.200,00', phone: '5511988888888' },
-        { id: '102032', name: 'Ana Costa', role: 'Consultor', status: 'Inativo', sales: 'R$ 0,00', phone: '5511977777777' },
-        { id: '102033', name: 'Pedro Alves', role: 'Líder', status: 'Ativo', sales: 'R$ 3.450,00', phone: '5511966666666' },
-        { id: '102034', name: 'Carla Lima', role: 'Consultor', status: 'Ativo', sales: 'R$ 525,00', phone: '5511955555555' },
-        { id: '102035', name: 'Marcos Rocha', role: 'Consultor', status: 'Inativo', sales: 'R$ 0,00', phone: '5511944444444' },
-    ];
-
-    // Mock Orders for Order History
-    const orderHistory = [
-        { id: 'PED-9021', date: '26/11/2025', items: '2x Caixa Master - Pomada Copaíba', total: 'R$ 420,00', status: 'Em trânsito' },
-        { id: 'PED-8832', date: '10/11/2025', items: '5x Caixa Master - Pomada Copaíba', total: 'R$ 1.050,00', status: 'Entregue' },
-        { id: 'PED-7543', date: '01/11/2025', items: '1x Caixa Master - Pomada Copaíba', total: 'R$ 255,90', status: 'Entregue' },
-        { id: 'PED-6201', date: '25/10/2025', items: '3x Caixa Master - Pomada Copaíba', total: 'R$ 675,90', status: 'Entregue' },
-    ];
+    // Using Centralized Mock Data
+    const filteredLessons = uniCategory === 'Todas as Aulas' ? SYSTEM_DATA.lessons : SYSTEM_DATA.lessons.filter(l => l.category === uniCategory);
 
     const getStatusStyle = (status: string) => {
         switch(status) {
@@ -1257,7 +1323,7 @@ const Dashboard = ({ activeTab, setActiveTab, consultant }: { activeTab?: string
                     </div>
 
                     {/* Filter Tabs */}
-                    <div className="flex overflow-x-auto pb-4 gap-4 no-scrollbar mt-8 pt-4">
+                    <div className="flex overflow-x-auto pb-4 mt-8 pt-4 gap-4 no-scrollbar">
                         {materialsCategories.map((cat) => (
                             <button
                                 key={cat}
@@ -1468,7 +1534,7 @@ const Dashboard = ({ activeTab, setActiveTab, consultant }: { activeTab?: string
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-100">
-                                        {orderHistory.map((order) => (
+                                        {SYSTEM_DATA.orders.map((order) => (
                                             <tr key={order.id} className="hover:bg-gray-50 transition-colors group">
                                                 <td className="py-4 px-6 font-bold text-brand-green-dark text-sm">#{order.id}</td>
                                                 <td className="py-4 px-6 text-sm text-gray-500 font-medium">{order.date}</td>
@@ -1750,7 +1816,7 @@ const Dashboard = ({ activeTab, setActiveTab, consultant }: { activeTab?: string
                                 </tr>
                             </thead>
                             <tbody>
-                                {teamMembers.map((member) => (
+                                {SYSTEM_DATA.team.map((member) => (
                                     <tr key={member.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
                                         <td className="py-4 px-2 flex items-center gap-3">
                                             <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center text-xs font-bold">
@@ -1807,7 +1873,7 @@ const Dashboard = ({ activeTab, setActiveTab, consultant }: { activeTab?: string
                              
                              <div>
                                  <p className="text-gray-400 text-sm font-bold uppercase tracking-widest mb-2">Saldo Disponível</p>
-                                 <h3 className="text-5xl font-bold text-white tracking-tight mb-1">R$ 3.450,00</h3>
+                                 <h3 className="text-5xl font-bold text-white tracking-tight mb-1">{formatCurrency(SYSTEM_DATA.financial.balance)}</h3>
                                  <p className="text-[#4ADE80] text-sm font-medium flex items-center gap-2 mt-2">
                                      <TrendingUpIcon className="h-4 w-4" />
                                      +12% em relação ao mês anterior
@@ -1992,3 +2058,4 @@ export const ConsultantApp = () => {
 
     return <LoginScreen onLogin={setUser} onRegisterClick={() => setIsRegistering(true)} />;
 };
+    
