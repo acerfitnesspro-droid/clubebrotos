@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, createContext, useContext } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from './lib/supabaseClient';
 import { 
     BrandLogo, 
@@ -46,35 +46,18 @@ import {
     LocationIcon,
     SearchIcon,
     PlusIcon,
+    MinusIcon,
     PencilIcon,
-    TrashIcon
+    TrashIcon,
+    EyeIcon,
+    FilterIcon,
+    LockClosedIcon,
+    MicrophoneIcon,
+    StopIcon,
+    PaperAirplaneIcon,
+    SparklesFaceIcon
 } from './components/Icons';
 import { Consultant, ConsultantStats, Sale, Notification, PrivateCustomer, PrivateSale } from './types';
-
-// --- Theme Context ---
-const ThemeContext = createContext({
-    isDarkMode: false,
-    toggleTheme: () => {}
-});
-
-const useTheme = () => useContext(ThemeContext);
-
-// --- Global Floating Theme Toggle ---
-const FloatingThemeToggle = () => {
-    const { isDarkMode, toggleTheme } = useTheme();
-    return (
-        <button 
-            onClick={toggleTheme} 
-            className="fixed top-6 right-6 z-[60] p-3 rounded-full bg-white/80 dark:bg-white/10 backdrop-blur-md border border-gray-200 dark:border-gray-700 text-gray-800 dark:text-white shadow-[0_8px_30px_rgb(0,0,0,0.12)] hover:scale-110 transition-all duration-300 group"
-            title="Alternar Tema"
-        >
-            {isDarkMode ? 
-                <SunIcon className="h-6 w-6 text-yellow-400 drop-shadow-lg" /> : 
-                <MoonIcon className="h-6 w-6 text-indigo-600 dark:text-indigo-400 drop-shadow-lg" />
-            }
-        </button>
-    );
-};
 
 // --- Helper Functions ---
 
@@ -87,6 +70,330 @@ const formatCurrency = (value: number) => {
 
 // --- Components ---
 
+const JoAssistant = ({ setActiveTab }: { setActiveTab: (tab: string) => void }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const [messages, setMessages] = useState<{ sender: 'user' | 'bot', text: string }[]>([
+        { sender: 'bot', text: 'Olá! Sou a Jô, sua assistente virtual. Como posso ajudar você hoje?' }
+    ]);
+    const [inputText, setInputText] = useState('');
+    const [isListening, setIsListening] = useState(false);
+    const recognitionRef = useRef<any>(null);
+    const messagesEndRef = useRef<HTMLDivElement>(null);
+
+    // Initialize Speech Recognition
+    useEffect(() => {
+        if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+            const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+            recognitionRef.current = new SpeechRecognition();
+            recognitionRef.current.continuous = false;
+            recognitionRef.current.lang = 'pt-BR';
+            recognitionRef.current.interimResults = false;
+
+            recognitionRef.current.onresult = (event: any) => {
+                const transcript = event.results[0][0].transcript;
+                setInputText(transcript);
+                handleSendMessage(transcript);
+                setIsListening(false);
+            };
+
+            recognitionRef.current.onerror = (event: any) => {
+                console.error('Speech recognition error', event.error);
+                setIsListening(false);
+            };
+
+            recognitionRef.current.onend = () => {
+                setIsListening(false);
+            };
+        }
+    }, []);
+
+    // Scroll to bottom of chat
+    useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, [messages]);
+
+    const toggleListening = () => {
+        if (isListening) {
+            recognitionRef.current?.stop();
+        } else {
+            setInputText('');
+            recognitionRef.current?.start();
+            setIsListening(true);
+        }
+    };
+
+    const speak = (text: string) => {
+        if ('speechSynthesis' in window) {
+            // Cancel any ongoing speech
+            window.speechSynthesis.cancel();
+            
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'pt-BR';
+            // Try to find a female Portuguese voice if available
+            const voices = window.speechSynthesis.getVoices();
+            const ptVoice = voices.find(v => v.lang.includes('pt') && v.name.includes('Google'));
+            if (ptVoice) utterance.voice = ptVoice;
+            
+            window.speechSynthesis.speak(utterance);
+        }
+    };
+
+    const processCommand = (text: string) => {
+        const lowerText = text.toLowerCase();
+        let response = '';
+
+        // Keyword Matching Logic
+        if (lowerText.includes('venda') || lowerText.includes('pedido') || lowerText.includes('comprar')) {
+            setActiveTab('new_order');
+            response = 'Abri a aba de novos pedidos para você. Aproveite as promoções de caixa master!';
+        } else if (lowerText.includes('histórico') || lowerText.includes('meus pedidos') || lowerText.includes('acompanhar')) {
+            setActiveTab('my_orders');
+            response = 'Aqui está seu histórico de pedidos. Você pode ver detalhes e status de entrega.';
+        } else if (lowerText.includes('material') || lowerText.includes('foto') || lowerText.includes('post') || lowerText.includes('marketing')) {
+            setActiveTab('materials');
+            response = 'Levei você para os Materiais de Apoio. Tem posts novos para o Instagram!';
+        } else if (lowerText.includes('aula') || lowerText.includes('curso') || lowerText.includes('aprender') || lowerText.includes('treinamento')) {
+            setActiveTab('unibrotos');
+            response = 'Acesse a UniBrotos para ver os treinamentos disponíveis.';
+        } else if (lowerText.includes('equipe') || lowerText.includes('time') || lowerText.includes('consultores')) {
+            setActiveTab('business');
+            response = 'Mostrando a gestão do seu time. Acompanhe o desempenho da sua rede.';
+        } else if (lowerText.includes('financeiro') || lowerText.includes('saque') || lowerText.includes('bônus') || lowerText.includes('dinheiro')) {
+            setActiveTab('financial');
+            response = 'Abri o painel financeiro. Você pode solicitar saques e ver seus bônus aqui.';
+        } else if (lowerText.includes('convidar') || lowerText.includes('indicar') || lowerText.includes('link')) {
+            setActiveTab('invite');
+            response = 'Aqui está sua página de convite. Copie seu link exclusivo para cadastrar novos consultores.';
+        } else if (lowerText.includes('olá') || lowerText.includes('oi') || lowerText.includes('bom dia') || lowerText.includes('boa tarde')) {
+            response = 'Olá! Tudo bem? Como posso te ajudar hoje no sistema Brotos da Terra?';
+        } else {
+            response = 'Desculpe, não entendi exatamente. Posso te ajudar a navegar para Pedidos, Financeiro, Equipe ou Materiais. O que prefere?';
+        }
+
+        return response;
+    };
+
+    const handleSendMessage = (text = inputText) => {
+        if (!text.trim()) return;
+
+        // Add user message
+        setMessages(prev => [...prev, { sender: 'user', text }]);
+        setInputText('');
+
+        // Process AI Response
+        setTimeout(() => {
+            const aiResponse = processCommand(text);
+            setMessages(prev => [...prev, { sender: 'bot', text: aiResponse }]);
+            speak(aiResponse);
+        }, 600);
+    };
+
+    return (
+        <div className="fixed bottom-6 right-6 z-[100] font-sans flex flex-col items-end pointer-events-none">
+            {/* Chat Window */}
+            {isOpen && (
+                <div className="bg-white rounded-[2rem] shadow-2xl w-80 md:w-96 mb-4 overflow-hidden border border-gray-100 pointer-events-auto animate-fade-in flex flex-col max-h-[500px]">
+                    {/* Header */}
+                    <div className="bg-brand-green-dark p-4 flex justify-between items-center text-white">
+                        <div className="flex items-center gap-3">
+                            <div className="bg-white/20 p-2 rounded-full">
+                                <SparklesFaceIcon className="h-5 w-5 text-white" />
+                            </div>
+                            <div>
+                                <h3 className="font-bold text-sm">Jô</h3>
+                                <p className="text-[10px] text-brand-green-mid font-medium uppercase tracking-wider">Assistente Virtual</p>
+                            </div>
+                        </div>
+                        <button onClick={() => setIsOpen(false)} className="text-white/70 hover:text-white">
+                            <CloseIcon className="h-5 w-5" />
+                        </button>
+                    </div>
+
+                    {/* Messages Area */}
+                    <div className="flex-1 overflow-y-auto p-4 bg-gray-50 h-80 space-y-4">
+                        {messages.map((msg, idx) => (
+                            <div key={idx} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                <div className={`max-w-[80%] rounded-2xl p-3 text-sm ${
+                                    msg.sender === 'user' 
+                                    ? 'bg-brand-green-dark text-white rounded-br-none' 
+                                    : 'bg-white text-gray-700 shadow-sm border border-gray-100 rounded-bl-none'
+                                }`}>
+                                    {msg.text}
+                                </div>
+                            </div>
+                        ))}
+                        <div ref={messagesEndRef} />
+                    </div>
+
+                    {/* Input Area */}
+                    <div className="p-3 bg-white border-t border-gray-100 flex items-center gap-2">
+                        <button 
+                            onClick={toggleListening}
+                            className={`p-2 rounded-full transition-all ${isListening ? 'bg-red-50 text-red-500 animate-pulse' : 'bg-gray-100 text-gray-500 hover:bg-brand-green-light hover:text-brand-green-dark'}`}
+                            title="Falar"
+                        >
+                            {isListening ? <StopIcon className="h-5 w-5" /> : <MicrophoneIcon className="h-5 w-5" />}
+                        </button>
+                        <input 
+                            type="text" 
+                            value={inputText}
+                            onChange={(e) => setInputText(e.target.value)}
+                            onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+                            placeholder="Digite ou fale..."
+                            className="flex-1 bg-gray-50 border-none rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-brand-green-mid/20 outline-none"
+                        />
+                        <button 
+                            onClick={() => handleSendMessage()}
+                            disabled={!inputText.trim()}
+                            className="p-2 bg-brand-green-dark text-white rounded-xl hover:bg-brand-green-mid disabled:opacity-50 transition-colors"
+                        >
+                            <PaperAirplaneIcon className="h-4 w-4" />
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Floating Button */}
+            <button 
+                onClick={() => setIsOpen(!isOpen)}
+                className="bg-brand-green-dark hover:bg-brand-green-mid text-white p-4 rounded-full shadow-lg hover:shadow-2xl hover:-translate-y-1 transition-all pointer-events-auto flex items-center gap-2 group border-4 border-white/20"
+            >
+                {isOpen ? <CloseIcon className="h-6 w-6" /> : <SparklesFaceIcon className="h-8 w-8" />}
+                {!isOpen && <span className="max-w-0 overflow-hidden group-hover:max-w-xs transition-all duration-500 whitespace-nowrap font-bold pl-0 group-hover:pl-2">Falar com a Jô</span>}
+            </button>
+        </div>
+    );
+};
+
+const OrderDetailsModal = ({ order, onClose }: { order: any, onClose: () => void }) => {
+    if (!order) return null;
+
+    // Mock parsing the item string to get quantity for calculation simulation
+    const qtyMatch = order.items.match(/(\d+)x/);
+    const qty = qtyMatch ? parseInt(qtyMatch[1]) : 1;
+    const unitPrice = 210.00;
+    const subtotal = qty * unitPrice;
+    const shipping = order.total.includes('420,00') || order.total.includes('1.050,00') || order.total.includes('675,90') ? 0 : 45.90; // Mock logic based on total
+
+    return (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 animate-fade-in">
+            {/* Backdrop */}
+            <div 
+                className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" 
+                onClick={onClose}
+            ></div>
+
+            {/* Modal Content */}
+            <div className="bg-white rounded-[2rem] w-full max-w-3xl relative z-10 overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+                
+                {/* Header */}
+                <div className="bg-gray-50 px-8 py-6 border-b border-gray-100 flex justify-between items-center">
+                    <div>
+                        <div className="flex items-center gap-3">
+                            <h3 className="text-2xl font-serif font-bold text-brand-green-dark">Pedido #{order.id}</h3>
+                            <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest border ${
+                                order.status === 'Entregue' ? 'bg-green-100 text-green-700 border-green-200' :
+                                order.status === 'Em trânsito' ? 'bg-blue-100 text-blue-700 border-blue-200' :
+                                'bg-gray-100 text-gray-700 border-gray-200'
+                            }`}>
+                                {order.status}
+                            </span>
+                        </div>
+                        <p className="text-gray-500 text-sm font-medium mt-1">Realizado em {order.date}</p>
+                    </div>
+                    <button 
+                        onClick={onClose}
+                        className="h-10 w-10 bg-white rounded-full border border-gray-200 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                    >
+                        <CloseIcon className="h-5 w-5" />
+                    </button>
+                </div>
+
+                {/* Body */}
+                <div className="p-8 overflow-y-auto custom-scrollbar">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
+                        {/* Shipping Info */}
+                        <div className="md:col-span-2 space-y-6">
+                            <h4 className="text-sm font-extrabold text-gray-400 uppercase tracking-widest mb-4">Itens do Pedido</h4>
+                            
+                            {/* Product Item */}
+                            <div className="flex gap-4 p-4 rounded-2xl border border-gray-100 bg-gray-50/50 hover:bg-white hover:shadow-md transition-all">
+                                <div className="h-20 w-20 bg-white rounded-xl p-2 border border-gray-100 shrink-0">
+                                    <img src="https://i.imgur.com/yNKoBxr.png" alt="Product" className="w-full h-full object-contain" />
+                                </div>
+                                <div className="flex-1">
+                                    <h5 className="font-bold text-gray-800">Caixa Pomada de Copaíba</h5>
+                                    <p className="text-xs text-gray-500 mb-2">Caixa Pomada de Copaíba - 12 Unidades</p>
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-sm font-medium text-gray-600">Qtd: {qty}</span>
+                                        <span className="font-bold text-brand-green-dark">{formatCurrency(subtotal)}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Delivery Info */}
+                        <div className="space-y-6">
+                            <h4 className="text-sm font-extrabold text-gray-400 uppercase tracking-widest mb-4">Entrega</h4>
+                            <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100">
+                                <div className="flex items-start gap-3 mb-4">
+                                    <LocationIcon />
+                                    <div>
+                                        <p className="text-sm font-bold text-gray-800">Endereço de Entrega</p>
+                                        <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                                            Rua das Flores, 123<br />
+                                            Jardim Botânico<br />
+                                            São Paulo - SP<br />
+                                            CEP: 01234-567
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-3 pt-4 border-t border-gray-200">
+                                    <TruckIcon className="h-4 w-4 text-brand-green-mid" />
+                                    <p className="text-xs font-medium text-brand-green-dark">Sedex Express</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Financial Summary */}
+                    <div className="bg-gray-50 rounded-2xl p-6 border border-gray-100">
+                         <div className="space-y-3">
+                            <div className="flex justify-between text-sm text-gray-500">
+                                <span>Subtotal</span>
+                                <span>{formatCurrency(subtotal)}</span>
+                            </div>
+                            <div className="flex justify-between text-sm text-gray-500">
+                                <span>Frete</span>
+                                <span>{shipping === 0 ? 'Grátis' : formatCurrency(shipping)}</span>
+                            </div>
+                            <div className="h-px bg-gray-200 my-2"></div>
+                            <div className="flex justify-between items-center text-xl font-bold text-brand-green-dark">
+                                <span>Total</span>
+                                <span>{order.total}</span>
+                            </div>
+                         </div>
+                    </div>
+                </div>
+
+                {/* Footer */}
+                <div className="px-8 py-4 bg-gray-50 border-t border-gray-100 flex justify-between items-center">
+                    <button className="text-sm font-bold text-gray-500 hover:text-brand-green-dark flex items-center gap-2 transition-colors">
+                        <DownloadIcon className="h-4 w-4" />
+                        Baixar Nota Fiscal
+                    </button>
+                    <button 
+                        onClick={onClose}
+                        className="bg-brand-green-dark text-white px-6 py-2.5 rounded-xl text-sm font-bold hover:bg-brand-green-mid transition-colors shadow-lg shadow-brand-green-mid/20"
+                    >
+                        Fechar Detalhes
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const EarningsSimulator = () => {
     const [dailyGoal, setDailyGoal] = useState(4);
     const profitPerUnit = 17.50;
@@ -95,14 +402,14 @@ const EarningsSimulator = () => {
     const calculateMonthly = (daily: number) => daily * profitPerUnit * workingDays;
 
     return (
-        <div className="bg-white dark:bg-brand-dark-card rounded-[2rem] p-8 shadow-xl border border-gray-100 dark:border-gray-700 animate-slide-up mt-8">
+        <div className="bg-[#2E5C31] rounded-[2rem] p-8 shadow-xl border border-[#374151] animate-slide-up mt-8 text-white">
             <div className="flex items-start gap-4 mb-8">
-                <div className="bg-green-100 dark:bg-green-900/30 p-3 rounded-xl text-green-600 dark:text-green-400">
+                <div className="bg-white/10 p-3 rounded-xl text-[#4ADE80]">
                     <CurrencyDollarIcon className="h-8 w-8" />
                 </div>
                 <div>
-                    <h3 className="text-2xl font-serif font-bold text-gray-900 dark:text-white">Simulador de Ganhos</h3>
-                    <p className="text-gray-500 dark:text-gray-400 mt-1 max-w-2xl">
+                    <h3 className="text-2xl font-serif font-bold text-white">Simulador de Ganhos</h3>
+                    <p className="text-gray-300 mt-1 max-w-2xl">
                         Visualize o potencial do seu esforço. Pequenas metas diárias constroem grandes resultados mensais.
                         <span className="text-xs block mt-1 opacity-70">*Considerando 30 dias e lucro de R$ 17,50 por unidade.</span>
                     </p>
@@ -112,29 +419,29 @@ const EarningsSimulator = () => {
             {/* Static Examples Row */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
                 {[2, 5, 10].map((units) => (
-                    <div key={units} className="bg-gray-50 dark:bg-gray-800/50 rounded-2xl p-6 border border-gray-100 dark:border-gray-700 hover:border-green-500/30 transition-colors">
+                    <div key={units} className="bg-[#1F2937] rounded-2xl p-6 border border-[#374151] hover:border-[#4ADE80]/30 transition-colors">
                         <p className="text-[10px] font-extrabold uppercase tracking-widest text-gray-400 mb-2">Meta Diária</p>
-                        <p className="text-gray-700 dark:text-gray-300 font-medium mb-4">
-                            Vender <strong className="text-brand-green-mid">{units}</strong> pomadas
+                        <p className="text-gray-300 font-medium mb-4">
+                            Vender <strong className="text-[#4ADE80]">{units}</strong> pomadas
                         </p>
-                        <hr className="border-gray-200 dark:border-gray-700 mb-4" />
-                        <p className="text-[10px] font-extrabold uppercase tracking-widest text-gray-400 mb-1">Ganho Mensal Estimado</p>
-                        <p className="text-2xl font-bold text-gray-900 dark:text-white">{formatCurrency(calculateMonthly(units))}</p>
+                        <hr className="border-gray-700 mb-4" />
+                        <p className="text--[10px] font-extrabold uppercase tracking-widest text-gray-400 mb-1">Ganho Mensal Estimado</p>
+                        <p className="text-2xl font-bold text-white">{formatCurrency(calculateMonthly(units))}</p>
                     </div>
                 ))}
             </div>
 
             {/* Interactive Slider Section */}
-            <div className="bg-gray-50 dark:bg-gray-800/50 rounded-2xl p-8 border border-gray-100 dark:border-gray-700">
+            <div className="bg-[#1F2937] rounded-2xl p-8 border border-[#374151]">
                 <div className="text-center mb-8">
-                    <h4 className="text-lg font-bold text-gray-900 dark:text-white mb-6">Quanto você quer ganhar este mês?</h4>
+                    <h4 className="text-lg font-bold text-white mb-6">Quanto você quer ganhar este mês?</h4>
                     
                     <div className="flex items-center justify-center gap-4 flex-wrap">
-                         <span className="text-5xl md:text-6xl font-bold text-brand-green-mid tracking-tight">
+                         <span className="text-5xl md:text-6xl font-bold text-[#4ADE80] tracking-tight">
                             {formatCurrency(calculateMonthly(dailyGoal))}
                         </span>
-                        <div className="px-4 py-2 bg-white dark:bg-gray-700 rounded-lg shadow-sm border border-gray-200 dark:border-gray-600">
-                             <span className="text-sm font-bold text-gray-600 dark:text-gray-300">~{dailyGoal} un/dia</span>
+                        <div className="px-4 py-2 bg-[#374151] rounded-lg shadow-sm border border-gray-600">
+                             <span className="text-sm font-bold text-white">~{dailyGoal} un/dia</span>
                              <span className="block text-[9px] text-gray-400 uppercase tracking-widest font-bold">Sua Meta</span>
                         </div>
                     </div>
@@ -148,7 +455,7 @@ const EarningsSimulator = () => {
                         step="1"
                         value={dailyGoal}
                         onChange={(e) => setDailyGoal(parseInt(e.target.value))}
-                        className="w-full h-3 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-brand-green-mid hover:accent-brand-green-dark transition-all"
+                        className="w-full h-3 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-[#4ADE80] hover:accent-brand-green-mid transition-all"
                     />
                     <div className="flex justify-between mt-3 text-xs font-bold text-gray-400 uppercase tracking-widest">
                         <span>R$ 500</span>
@@ -166,7 +473,7 @@ const BusinessModelSection = () => {
 
     return (
         <div className="flex flex-col gap-6">
-            <div className="bg-black text-white p-8 md:p-12 rounded-[2rem] flex flex-col lg:flex-row gap-12 items-center shadow-2xl overflow-hidden relative transition-all duration-500">
+            <div className="bg-[#2E5C31] text-white p-8 md:p-12 rounded-[2rem] flex flex-col lg:flex-row gap-12 items-center shadow-2xl overflow-hidden relative transition-all duration-500">
                 {/* Background Glow Effect */}
                 <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-green-900/20 blur-[100px] rounded-full pointer-events-none -translate-y-1/2 translate-x-1/2"></div>
 
@@ -342,23 +649,22 @@ const LoginScreen = ({ onLogin, onRegisterClick }: { onLogin: (user: Consultant)
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-brand-dark-bg p-4 transition-colors duration-500 font-sans">
-            <FloatingThemeToggle />
+        <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4 transition-colors duration-500 font-sans">
             
-            <div className="bg-white dark:bg-brand-dark-card rounded-2xl shadow-2xl p-8 md:p-10 max-w-md w-full border-t-4 border-brand-green-dark relative z-10 animate-fade-in">
+            <div className="bg-white rounded-2xl shadow-2xl p-8 md:p-10 max-w-md w-full border-t-4 border-brand-green-dark relative z-10 animate-fade-in">
                 <div className="flex flex-col items-center mb-8">
                     <BrandLogo className="h-16 w-auto mb-6 drop-shadow-sm" />
-                    <h2 className="text-3xl font-serif font-extrabold text-brand-green-dark dark:text-white tracking-tight">Clube Brotos <span className="text-brand-green-mid">🌱</span></h2>
-                    <p className="text-gray-600 dark:text-gray-400 mt-2 text-base font-semibold">Área restrita para consultores.</p>
+                    <h2 className="text-3xl font-serif font-extrabold text-brand-green-dark tracking-tight">Clube Brotos <span className="text-brand-green-mid">🌱</span></h2>
+                    <p className="text-gray-600 mt-2 text-base font-semibold">Área restrita para consultores.</p>
                 </div>
                 
                 <form onSubmit={handleLogin} className="space-y-6">
                     <div>
-                        <label className="block text-xs font-bold text-gray-600 dark:text-gray-400 uppercase tracking-widest mb-2">ID de Consultor</label>
+                        <label className="block text-xs font-bold text-gray-600 uppercase tracking-widest mb-2">ID de Consultor</label>
                         <input 
                             type="text" 
                             placeholder="Ex: 000000"
-                            className="block w-full rounded-lg border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white p-3.5 font-bold focus:ring-2 focus:ring-brand-green-mid focus:border-brand-green-mid outline-none transition-all placeholder-gray-400"
+                            className="block w-full rounded-lg border-2 border-gray-200 bg-gray-50 text-gray-900 p-3.5 font-bold focus:ring-2 focus:ring-brand-green-mid focus:border-brand-green-mid outline-none transition-all placeholder-gray-400"
                             value={id}
                             onChange={(e) => setId(e.target.value)}
                             required
@@ -366,18 +672,18 @@ const LoginScreen = ({ onLogin, onRegisterClick }: { onLogin: (user: Consultant)
                     </div>
                     
                     <div>
-                        <label className="block text-xs font-bold text-gray-600 dark:text-gray-400 uppercase tracking-widest mb-2">Sua Senha</label>
+                        <label className="block text-xs font-bold text-gray-600 uppercase tracking-widest mb-2">Sua Senha</label>
                         <input 
                             type="password" 
                             placeholder="••••••••"
-                            className="block w-full rounded-lg border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white p-3.5 font-bold focus:ring-2 focus:ring-brand-green-mid focus:border-brand-green-mid outline-none transition-all placeholder-gray-400"
+                            className="block w-full rounded-lg border-2 border-gray-200 bg-gray-50 text-gray-900 p-3.5 font-bold focus:ring-2 focus:ring-brand-green-mid focus:border-brand-green-mid outline-none transition-all placeholder-gray-400"
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
                             required
                         />
                     </div>
                     
-                    {error && <p className="text-red-500 text-sm font-bold text-center bg-red-50 dark:bg-red-900/20 p-2 rounded">{error}</p>}
+                    {error && <p className="text-red-500 text-sm font-bold text-center bg-red-50 p-2 rounded">{error}</p>}
                     
                     <button 
                         type="submit" 
@@ -395,7 +701,7 @@ const LoginScreen = ({ onLogin, onRegisterClick }: { onLogin: (user: Consultant)
                 <div className="mt-6">
                      <button
                         onClick={onRegisterClick}
-                        className="w-full bg-transparent border-2 border-brand-green-dark text-brand-green-dark dark:text-brand-green-mid dark:border-brand-green-mid font-bold py-3.5 rounded-lg hover:bg-brand-green-dark hover:text-white transition-all duration-200 uppercase tracking-wide text-sm"
+                        className="w-full bg-transparent border-2 border-brand-green-dark text-brand-green-dark font-bold py-3.5 rounded-lg hover:bg-brand-green-dark hover:text-white transition-all duration-200 uppercase tracking-wide text-sm"
                     >
                         Quero ser um Consultor
                     </button>
@@ -415,10 +721,20 @@ const ConsultantRegister = ({ onBack, onRegisterSuccess }: { onBack: () => void,
         cep: '',
         address: '',
         password: '',
-        confirmPassword: ''
+        confirmPassword: '',
+        parentId: '' // ID do patrocinador
     });
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+
+    // Check for referral code in URL on mount
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const ref = params.get('ref');
+        if (ref) {
+            setFormData(prev => ({ ...prev, parentId: ref }));
+        }
+    }, []);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -445,7 +761,7 @@ const ConsultantRegister = ({ onBack, onRegisterSuccess }: { onBack: () => void,
             if (authError) throw authError;
             if (!authData.user) throw new Error("Erro ao criar usuário.");
 
-            // 2. Generate ID (Simple simulation)
+            // 2. Generate ID (Simples simulation)
             const newId = Math.floor(100000 + Math.random() * 900000).toString();
 
             // 3. Insert into Consultants table
@@ -457,7 +773,8 @@ const ConsultantRegister = ({ onBack, onRegisterSuccess }: { onBack: () => void,
                 whatsapp: formData.whatsapp,
                 document_id: formData.cpf,
                 address: `${formData.address} - CEP: ${formData.cep}`,
-                role: 'consultant'
+                role: 'consultant',
+                parent_id: formData.parentId || null // Salva o ID do patrocinador se existir
             }]);
 
             if (dbError) throw dbError;
@@ -473,18 +790,17 @@ const ConsultantRegister = ({ onBack, onRegisterSuccess }: { onBack: () => void,
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-brand-dark-bg p-4 transition-colors duration-500 font-sans">
-             <FloatingThemeToggle />
+        <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4 transition-colors duration-500 font-sans">
              
-            <div className="bg-white dark:bg-brand-dark-card rounded-2xl shadow-2xl p-8 md:p-10 max-w-2xl w-full border-t-4 border-brand-green-dark relative z-10 animate-fade-in my-10">
+            <div className="bg-white rounded-2xl shadow-2xl p-8 md:p-10 max-w-2xl w-full border-t-4 border-brand-green-dark relative z-10 animate-fade-in my-10">
                 <button onClick={onBack} className="absolute top-4 left-6 text-gray-400 hover:text-brand-green-dark transition-colors flex items-center font-medium">
                     ← Voltar para Login
                 </button>
 
                 <div className="flex flex-col items-center mb-8 mt-6">
                     <BrandLogo className="h-14 w-auto mb-4 drop-shadow-sm" />
-                    <h2 className="text-3xl font-serif font-extrabold text-brand-green-dark dark:text-white tracking-tight">Cadastro de Consultor</h2>
-                    <p className="text-gray-600 dark:text-gray-400 mt-2 text-base font-semibold">Preencha seus dados para iniciar.</p>
+                    <h2 className="text-3xl font-serif font-extrabold text-brand-green-dark tracking-tight">Cadastro de Consultor</h2>
+                    <p className="text-gray-600 mt-2 text-base font-semibold">Preencha seus dados para iniciar.</p>
                 </div>
 
                 <form onSubmit={handleRegister} className="space-y-5">
@@ -492,26 +808,42 @@ const ConsultantRegister = ({ onBack, onRegisterSuccess }: { onBack: () => void,
                     <div className="space-y-4">
                         <h3 className="text-xs font-extrabold text-gray-400 uppercase tracking-widest border-b pb-2 mb-4">Dados Pessoais</h3>
                         <div>
-                             <label className="block text-xs font-bold text-gray-600 dark:text-gray-400 uppercase tracking-widest mb-2">Nome Completo</label>
+                             <label className="block text-xs font-bold text-gray-600 uppercase tracking-widest mb-2">Nome Completo</label>
                             <input name="name" type="text" placeholder="Nome Completo" onChange={handleChange} required 
-                                className="block w-full rounded-lg border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white p-3.5 font-bold focus:ring-2 focus:ring-brand-green-mid outline-none" />
+                                className="block w-full rounded-lg border-2 border-gray-200 bg-gray-50 text-gray-900 p-3.5 font-bold focus:ring-2 focus:ring-brand-green-mid outline-none" />
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
-                                <label className="block text-xs font-bold text-gray-600 dark:text-gray-400 uppercase tracking-widest mb-2">CPF</label>
+                                <label className="block text-xs font-bold text-gray-600 uppercase tracking-widest mb-2">CPF</label>
                                 <input name="cpf" type="text" placeholder="CPF" onChange={handleChange} required 
-                                    className="block w-full rounded-lg border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white p-3.5 font-bold focus:ring-2 focus:ring-brand-green-mid outline-none" />
+                                    className="block w-full rounded-lg border-2 border-gray-200 bg-gray-50 text-gray-900 p-3.5 font-bold focus:ring-2 focus:ring-brand-green-mid outline-none" />
                             </div>
                             <div>
-                                <label className="block text-xs font-bold text-gray-600 dark:text-gray-400 uppercase tracking-widest mb-2">WhatsApp</label>
+                                <label className="block text-xs font-bold text-gray-600 uppercase tracking-widest mb-2">WhatsApp</label>
                                 <input name="whatsapp" type="text" placeholder="WhatsApp" onChange={handleChange} required 
-                                    className="block w-full rounded-lg border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white p-3.5 font-bold focus:ring-2 focus:ring-brand-green-mid outline-none" />
+                                    className="block w-full rounded-lg border-2 border-gray-200 bg-gray-50 text-gray-900 p-3.5 font-bold focus:ring-2 focus:ring-brand-green-mid outline-none" />
                             </div>
                         </div>
                         <div>
-                            <label className="block text-xs font-bold text-gray-600 dark:text-gray-400 uppercase tracking-widest mb-2">E-mail</label>
+                            <label className="block text-xs font-bold text-gray-600 uppercase tracking-widest mb-2">E-mail</label>
                             <input name="email" type="email" placeholder="E-mail" onChange={handleChange} required 
-                                className="block w-full rounded-lg border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white p-3.5 font-bold focus:ring-2 focus:ring-brand-green-mid outline-none" />
+                                className="block w-full rounded-lg border-2 border-gray-200 bg-gray-50 text-gray-900 p-3.5 font-bold focus:ring-2 focus:ring-brand-green-mid outline-none" />
+                        </div>
+                    </div>
+
+                    <div className="space-y-4 pt-4">
+                        <h3 className="text-xs font-extrabold text-gray-400 uppercase tracking-widest border-b pb-2 mb-4">Indicação</h3>
+                        <div>
+                            <label className="block text-xs font-bold text-gray-600 uppercase tracking-widest mb-2">ID de quem indicou</label>
+                            <input 
+                                name="parentId" 
+                                type="text" 
+                                placeholder="ID do Patrocinador (Opcional)" 
+                                value={formData.parentId}
+                                onChange={handleChange}
+                                className={`block w-full rounded-lg border-2 bg-gray-50 text-gray-900 p-3.5 font-bold focus:ring-2 focus:ring-brand-green-mid outline-none ${formData.parentId ? 'border-brand-green-mid/50 bg-green-50/30' : 'border-gray-200'}`}
+                            />
+                            {formData.parentId && <p className="text-[10px] text-brand-green-dark mt-1 font-bold">Código de indicação aplicado.</p>}
                         </div>
                     </div>
 
@@ -519,14 +851,14 @@ const ConsultantRegister = ({ onBack, onRegisterSuccess }: { onBack: () => void,
                         <h3 className="text-xs font-extrabold text-gray-400 uppercase tracking-widest border-b pb-2 mb-4">Localização</h3>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                              <div className="md:col-span-1">
-                                <label className="block text-xs font-bold text-gray-600 dark:text-gray-400 uppercase tracking-widest mb-2">CEP</label>
+                                <label className="block text-xs font-bold text-gray-600 uppercase tracking-widest mb-2">CEP</label>
                                 <input name="cep" type="text" placeholder="CEP" onChange={handleChange} required 
-                                    className="block w-full rounded-lg border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white p-3.5 font-bold focus:ring-2 focus:ring-brand-green-mid outline-none" />
+                                    className="block w-full rounded-lg border-2 border-gray-200 bg-gray-50 text-gray-900 p-3.5 font-bold focus:ring-2 focus:ring-brand-green-mid outline-none" />
                              </div>
                              <div className="md:col-span-2">
-                                <label className="block text-xs font-bold text-gray-600 dark:text-gray-400 uppercase tracking-widest mb-2">Endereço Completo</label>
+                                <label className="block text-xs font-bold text-gray-600 uppercase tracking-widest mb-2">Endereço Completo</label>
                                 <input name="address" type="text" placeholder="Endereço Completo" onChange={handleChange} required 
-                                    className="block w-full rounded-lg border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white p-3.5 font-bold focus:ring-2 focus:ring-brand-green-mid outline-none" />
+                                    className="block w-full rounded-lg border-2 border-gray-200 bg-gray-50 text-gray-900 p-3.5 font-bold focus:ring-2 focus:ring-brand-green-mid outline-none" />
                              </div>
                         </div>
                     </div>
@@ -535,14 +867,14 @@ const ConsultantRegister = ({ onBack, onRegisterSuccess }: { onBack: () => void,
                          <h3 className="text-xs font-extrabold text-gray-400 uppercase tracking-widest border-b pb-2 mb-4">Segurança</h3>
                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
-                                <label className="block text-xs font-bold text-gray-600 dark:text-gray-400 uppercase tracking-widest mb-2">Senha</label>
+                                <label className="block text-xs font-bold text-gray-600 uppercase tracking-widest mb-2">Senha</label>
                                 <input name="password" type="password" placeholder="Senha" onChange={handleChange} required 
-                                    className="block w-full rounded-lg border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white p-3.5 font-bold focus:ring-2 focus:ring-brand-green-mid outline-none" />
+                                    className="block w-full rounded-lg border-2 border-gray-200 bg-gray-50 text-gray-900 p-3.5 font-bold focus:ring-2 focus:ring-brand-green-mid outline-none" />
                             </div>
                             <div>
-                                <label className="block text-xs font-bold text-gray-600 dark:text-gray-400 uppercase tracking-widest mb-2">Confirmar Senha</label>
+                                <label className="block text-xs font-bold text-gray-600 uppercase tracking-widest mb-2">Confirmar Senha</label>
                                 <input name="confirmPassword" type="password" placeholder="Confirmar Senha" onChange={handleChange} required 
-                                    className="block w-full rounded-lg border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white p-3.5 font-bold focus:ring-2 focus:ring-brand-green-mid outline-none" />
+                                    className="block w-full rounded-lg border-2 border-gray-200 bg-gray-50 text-gray-900 p-3.5 font-bold focus:ring-2 focus:ring-brand-green-mid outline-none" />
                             </div>
                          </div>
                     </div>
@@ -569,6 +901,7 @@ type DashboardShellProps = {
 const DashboardShell = ({ consultant, children, onLogout }: DashboardShellProps) => {
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [activeTab, setActiveTab] = useState('overview');
+    const [showLockedToast, setShowLockedToast] = useState(false);
 
     // Passing the activeTab to children if they are valid React elements
     const childrenWithProps = React.Children.map(children, child => {
@@ -578,7 +911,8 @@ const DashboardShell = ({ consultant, children, onLogout }: DashboardShellProps)
         return child;
     });
 
-    const isDistributor = consultant.role === 'leader' || consultant.role === 'admin';
+    // Check if user is distributor, but FORCE consultor if ID is 007053 (Cleide) for demo/testing purposes
+    const isDistributor = (consultant.role === 'leader' || consultant.role === 'admin') && consultant.id !== '007053';
 
     // Main Menu Items
     const menuItems = [
@@ -594,7 +928,7 @@ const DashboardShell = ({ consultant, children, onLogout }: DashboardShellProps)
         { id: 'invite', label: 'Convidar Consultor', icon: <UserPlusIcon /> },
     ];
 
-    // Distributor Only Items
+    // Distributor Only Items (Now visible to everyone but locked for consultants)
     const distributorItems = [
         { id: 'business', label: 'Meu Negócio', icon: <BriefcaseIcon /> },
         { id: 'financial', label: 'Financeiro', icon: <BanknotesIcon /> },
@@ -604,17 +938,25 @@ const DashboardShell = ({ consultant, children, onLogout }: DashboardShellProps)
         const isActive = activeTab === item.id;
         const isNewOrder = item.id === 'new_order';
         
+        // Locked logic
+        const isLocked = ['business', 'financial'].includes(item.id) && !isDistributor;
+
         return (
             <button
                 key={item.id}
                 onClick={() => {
+                    if (isLocked) {
+                        setShowLockedToast(true);
+                        setTimeout(() => setShowLockedToast(false), 3000);
+                        return;
+                    }
                     setActiveTab(item.id);
                     setIsMobileMenuOpen(false);
                 }}
-                className={`w-full flex items-center space-x-4 px-6 py-4 rounded-xl transition-all duration-200 group ${
+                className={`w-full flex items-center space-x-4 px-6 py-4 rounded-xl transition-all duration-200 group relative ${
                     isActive 
                         ? 'bg-white text-[#2E5C31] shadow-lg transform scale-[1.02]' 
-                        : 'text-white hover:bg-white/10'
+                        : (isLocked ? 'text-white opacity-50 cursor-not-allowed' : 'text-white hover:bg-white/10')
                 }`}
             >
                 <div className={`transition-colors duration-200 ${
@@ -627,13 +969,30 @@ const DashboardShell = ({ consultant, children, onLogout }: DashboardShellProps)
                 <span className={`text-base ${isActive ? 'font-extrabold' : 'font-semibold'} ${!isActive && isNewOrder ? 'text-yellow-400' : ''}`}>
                     {item.label}
                 </span>
+                
+                {isLocked && <LockClosedIcon className="h-4 w-4 ml-auto" />}
             </button>
         );
     };
 
     return (
-        <div className="flex h-screen bg-gray-50 dark:bg-brand-dark-bg font-sans transition-colors duration-500">
-            <FloatingThemeToggle />
+        <div className="flex h-screen bg-gray-50 font-sans transition-colors duration-500 relative">
+            
+            {/* AI Assistant - Rendered Globally */}
+            <JoAssistant setActiveTab={setActiveTab} />
+
+            {/* Locked Content Toast Notification */}
+            {showLockedToast && (
+                <div className="fixed top-20 right-4 md:right-8 bg-gray-800 text-white px-6 py-4 rounded-2xl shadow-2xl z-[70] flex items-center gap-4 animate-slide-left border border-white/10">
+                    <div className="bg-white/10 p-2 rounded-full text-[#4ADE80]">
+                        <LockClosedIcon className="h-6 w-6" />
+                    </div>
+                    <div>
+                        <h4 className="font-bold text-sm leading-none">Acesso Restrito</h4>
+                        <p className="text-xs font-medium opacity-80 mt-1">Torne-se um Distribuidor para desbloquear.</p>
+                    </div>
+                </div>
+            )}
 
             {/* Mobile Header */}
             <div className="md:hidden fixed top-0 w-full bg-brand-green-dark z-50 px-4 py-3 flex items-center justify-between shadow-md">
@@ -699,12 +1058,8 @@ const DashboardShell = ({ consultant, children, onLogout }: DashboardShellProps)
                         
                         {expansionItems.map(renderMenuItem)}
                         
-                        {/* Distributor Section */}
-                        {isDistributor && (
-                            <>
-                                {distributorItems.map(renderMenuItem)}
-                            </>
-                        )}
+                        {/* Distributor Section (Visible to all, locked for consultants) */}
+                        {distributorItems.map(renderMenuItem)}
                     </nav>
 
                     {/* Logout Footer */}
@@ -721,7 +1076,7 @@ const DashboardShell = ({ consultant, children, onLogout }: DashboardShellProps)
             </aside>
 
             {/* Main Content Area */}
-            <main className="flex-1 overflow-y-auto pt-16 md:pt-0 bg-gray-50 dark:bg-brand-dark-bg p-4 md:p-8">
+            <main className="flex-1 overflow-y-auto pt-16 md:pt-0 bg-gray-50 p-4 md:p-8">
                  {childrenWithProps}
             </main>
         </div>
@@ -730,7 +1085,8 @@ const DashboardShell = ({ consultant, children, onLogout }: DashboardShellProps)
 
 const Dashboard = ({ activeTab, setActiveTab, consultant }: { activeTab?: string, setActiveTab?: (tab: string) => void, consultant: Consultant }) => {
     // Determine content based on activeTab
-    const isDistributor = consultant.role === 'leader' || consultant.role === 'admin';
+    // Force consultor for Cleide (007053) for demo purposes
+    const isDistributor = (consultant.role === 'leader' || consultant.role === 'admin') && consultant.id !== '007053';
 
     // State for Materials Filter
     const [materialCategory, setMaterialCategory] = useState('Todos');
@@ -748,9 +1104,23 @@ const Dashboard = ({ activeTab, setActiveTab, consultant }: { activeTab?: string
 
     const filteredMaterials = materialCategory === 'Todos' ? mockMaterials : mockMaterials.filter(m => m.category === materialCategory);
 
+    // State for UniBrotos Filter
+    const [uniCategory, setUniCategory] = useState('Todas as Aulas');
+    const uniCategories = ['Todas as Aulas', 'Técnicas de Venda', 'Produtos', 'Liderança'];
+
+    // Mock Lessons
+    const mockLessons = [
+        { id: 1, title: 'Técnicas de Fechamento', category: 'Técnicas de Venda', duration: '12 min', thumbnail: 'bg-blue-100' },
+        { id: 2, title: 'Tudo sobre a Pomada', category: 'Produtos', duration: '25 min', thumbnail: 'bg-green-100' },
+        { id: 3, title: 'Liderança Eficaz', category: 'Liderança', duration: '45 min', thumbnail: 'bg-purple-100' },
+        { id: 4, title: 'Como abordar clientes', category: 'Técnicas de Venda', duration: '15 min', thumbnail: 'bg-blue-50' },
+    ];
+
+    const filteredLessons = uniCategory === 'Todas as Aulas' ? mockLessons : mockLessons.filter(l => l.category === uniCategory);
+
     // Mock Team Data for Business Tab
     const teamMembers = [
-        { id: '102030', name: 'Maria Silva', role: 'Consultor', status: 'Ativo', sales: 'R$ 850,00', phone: '5511999999999' },
+        { id: '007053', name: 'Cleide Maia', role: 'Consultor', status: 'Ativo', sales: 'R$ 1.250,00', phone: '5511999999999' },
         { id: '102031', name: 'João Santos', role: 'Consultor', status: 'Ativo', sales: 'R$ 1.200,00', phone: '5511988888888' },
         { id: '102032', name: 'Ana Costa', role: 'Consultor', status: 'Inativo', sales: 'R$ 0,00', phone: '5511977777777' },
         { id: '102033', name: 'Pedro Alves', role: 'Líder', status: 'Ativo', sales: 'R$ 3.450,00', phone: '5511966666666' },
@@ -758,15 +1128,109 @@ const Dashboard = ({ activeTab, setActiveTab, consultant }: { activeTab?: string
         { id: '102035', name: 'Marcos Rocha', role: 'Consultor', status: 'Inativo', sales: 'R$ 0,00', phone: '5511944444444' },
     ];
 
+    // Mock Orders for Order History
+    const orderHistory = [
+        { id: 'PED-9021', date: '26/11/2025', items: '2x Caixa Master - Pomada Copaíba', total: 'R$ 420,00', status: 'Em trânsito' },
+        { id: 'PED-8832', date: '10/11/2025', items: '5x Caixa Master - Pomada Copaíba', total: 'R$ 1.050,00', status: 'Entregue' },
+        { id: 'PED-7543', date: '01/11/2025', items: '1x Caixa Master - Pomada Copaíba', total: 'R$ 255,90', status: 'Entregue' },
+        { id: 'PED-6201', date: '25/10/2025', items: '3x Caixa Master - Pomada Copaíba', total: 'R$ 675,90', status: 'Entregue' },
+    ];
+
+    const getStatusStyle = (status: string) => {
+        switch(status) {
+            case 'Entregue': return 'bg-green-100 text-green-700 border-green-200';
+            case 'Em trânsito': return 'bg-blue-100 text-blue-700 border-blue-200';
+            case 'Pendente': return 'bg-yellow-100 text-yellow-700 border-yellow-200';
+            case 'Cancelado': return 'bg-red-100 text-red-700 border-red-200';
+            default: return 'bg-gray-100 text-gray-700 border-gray-200';
+        }
+    };
+
+    // New Order State
+    const [orderQty, setOrderQty] = useState(1);
+    const [cep, setCep] = useState('');
+    const [shippingCost, setShippingCost] = useState<number | null>(null);
+    const [isCalculating, setIsCalculating] = useState(false);
+    const [loadingShipping, setLoadingShipping] = useState(false);
+    const [showFreeShippingToast, setShowFreeShippingToast] = useState(false);
+    
+    // Order Details Modal State
+    const [selectedOrder, setSelectedOrder] = useState<any>(null);
+
+    // Invite State
+    const [copied, setCopied] = useState(false);
+    
+    // Financial Tab State
+    const [bankInfo, setBankInfo] = useState({
+        cnpj: '',
+        bankName: '',
+        agency: '',
+        account: '',
+        pixKey: ''
+    });
+    const [bonusVolume, setBonusVolume] = useState(10000);
+
+    const BOX_PRICE = 210;
+    const FREE_SHIPPING_THRESHOLD = 4;
+
+    const handleCalculateShipping = () => {
+        if (cep.length < 8) return;
+        setLoadingShipping(true);
+        // Simulate API call
+        setTimeout(() => {
+            setShippingCost(orderQty >= FREE_SHIPPING_THRESHOLD ? 0 : 45.90);
+            setLoadingShipping(false);
+        }, 1500);
+    };
+
+    // Recalculate shipping if qty changes and shipping was already calculated
+    useEffect(() => {
+        if (shippingCost !== null) {
+             setShippingCost(orderQty >= FREE_SHIPPING_THRESHOLD ? 0 : 45.90);
+        }
+        
+        // Trigger Free Shipping Toast
+        if (orderQty === FREE_SHIPPING_THRESHOLD) {
+            setShowFreeShippingToast(true);
+            const timer = setTimeout(() => setShowFreeShippingToast(false), 5000);
+            return () => clearTimeout(timer);
+        } else if (orderQty < FREE_SHIPPING_THRESHOLD) {
+            setShowFreeShippingToast(false);
+        }
+
+    }, [orderQty]);
+
+    const total = (orderQty * BOX_PRICE) + (shippingCost || 0);
+    const progressToFree = Math.min((orderQty / FREE_SHIPPING_THRESHOLD) * 100, 100);
+
+    const inviteLink = `${window.location.origin}?ref=${consultant.id}`;
+
+    const handleCopyLink = () => {
+        navigator.clipboard.writeText(inviteLink);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
+    
+    // Bonus Calculation Logic
+    const calculateBonus = (volume: number) => {
+        let percentage = 0;
+        if (volume < 5000) percentage = 0.03;
+        else if (volume < 15000) percentage = 0.05;
+        else if (volume < 30000) percentage = 0.07;
+        else percentage = 0.10;
+        
+        return volume * percentage;
+    };
+
     return (
-        <div className="max-w-7xl mx-auto animate-fade-in">
+        <div className="max-w-7xl mx-auto animate-fade-in py-6 md:py-10">
              {activeTab === 'overview' && (
-                <div className="space-y-8">
+                <div className="space-y-10">
                     <div className="flex justify-between items-center">
-                        <h1 className="text-3xl font-serif font-bold text-brand-green-dark dark:text-gray-100">
+                        <h1 className="text-3xl font-serif font-bold text-brand-green-dark">
                             Olá, {consultant.name.split(' ')[0]}! 👋
                         </h1>
-                        <p className="text-gray-500 dark:text-gray-400 text-sm font-medium">{new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
+                        <p className="text-gray-500 text-sm font-medium">{new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
                     </div>
 
                     {/* New Business Model Section (Replacing Old Campaign) */}
@@ -775,33 +1239,33 @@ const Dashboard = ({ activeTab, setActiveTab, consultant }: { activeTab?: string
              )}
 
              {activeTab === 'materials' && (
-                 <div className="space-y-6">
+                 <div className="space-y-8">
                     {/* Header */}
-                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                        <div className="flex items-start gap-4">
-                            <div className="bg-pink-100 dark:bg-pink-900/30 p-3 rounded-2xl text-pink-500">
+                    <div className="flex flex-col md:flex-row justify-between items-center gap-6 md:gap-8">
+                        <div className="flex items-center gap-5">
+                            <div className="bg-pink-100 p-4 rounded-3xl text-pink-500 shadow-sm">
                                 <PhotoIcon className="h-8 w-8" />
                             </div>
                             <div>
-                                <h2 className="text-2xl font-serif font-bold text-brand-green-dark dark:text-white">Materiais de Apoio</h2>
-                                <p className="text-gray-500 dark:text-gray-400 text-sm">Acervo de marketing para suas redes sociais.</p>
+                                <h2 className="text-3xl font-serif font-bold text-brand-green-dark">Materiais de Apoio</h2>
+                                <p className="text-gray-500 text-sm font-medium mt-1">Acervo de marketing para suas redes sociais.</p>
                             </div>
                         </div>
-                        <button className="bg-[#064e3b] hover:bg-[#064e3b]/90 text-white font-bold py-2.5 px-6 rounded-lg text-sm shadow-lg transition-transform hover:scale-105">
+                        <button className="bg-[#064e3b] hover:bg-[#064e3b]/90 text-white font-bold py-3 px-8 rounded-2xl text-sm shadow-lg transition-transform hover:scale-105 active:scale-95">
                             + Novo Material
                         </button>
                     </div>
 
                     {/* Filter Tabs */}
-                    <div className="flex overflow-x-auto pb-2 gap-3 no-scrollbar">
+                    <div className="flex overflow-x-auto pb-4 gap-4 no-scrollbar mt-8 pt-4">
                         {materialsCategories.map((cat) => (
                             <button
                                 key={cat}
                                 onClick={() => setMaterialCategory(cat)}
-                                className={`px-5 py-2 rounded-lg text-sm font-bold whitespace-nowrap transition-all border ${
+                                className={`px-6 py-3 rounded-xl text-sm font-bold whitespace-nowrap transition-all border ${
                                     materialCategory === cat
-                                    ? 'bg-[#064e3b] text-white border-[#064e3b]'
-                                    : 'bg-white dark:bg-brand-dark-card text-gray-500 border-gray-200 dark:border-gray-700 hover:border-[#064e3b] hover:text-[#064e3b]'
+                                    ? 'bg-[#064e3b] text-white border-[#064e3b] shadow-md'
+                                    : 'bg-white text-gray-500 border-gray-100 hover:border-[#064e3b] hover:text-[#064e3b] hover:bg-gray-50'
                                 }`}
                             >
                                 {cat}
@@ -810,29 +1274,29 @@ const Dashboard = ({ activeTab, setActiveTab, consultant }: { activeTab?: string
                     </div>
 
                     {/* Materials Grid */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
                         {filteredMaterials.map((material) => (
-                            <div key={material.id} className="bg-white dark:bg-brand-dark-card rounded-[1.5rem] overflow-hidden shadow-sm border border-gray-100 dark:border-gray-800 hover:shadow-md transition-shadow group relative">
+                            <div key={material.id} className="bg-white rounded-[2rem] overflow-hidden shadow-sm hover:shadow-xl border border-gray-100 transition-all duration-300 group relative hover:-translate-y-1">
                                 {/* Gray Placeholder Area */}
-                                <div className="aspect-[4/5] bg-gray-100 dark:bg-gray-800 flex items-center justify-center relative">
-                                    <PhotoIcon className="h-12 w-12 text-gray-300" />
+                                <div className="aspect-[4/5] bg-gray-100 flex items-center justify-center relative group-hover:bg-gray-200 transition-colors">
+                                    <PhotoIcon className="h-16 w-16 text-gray-300 group-hover:scale-110 transition-transform duration-300" />
                                     {/* Hover Overlay */}
-                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                        <button className="bg-white text-[#064e3b] font-bold py-2 px-6 rounded-full shadow-lg transform translate-y-4 group-hover:translate-y-0 transition-all duration-300">
+                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-[2px]">
+                                        <button className="bg-white text-[#064e3b] font-bold py-3 px-8 rounded-full shadow-lg transform translate-y-4 group-hover:translate-y-0 transition-all duration-300 hover:bg-green-50">
                                             Baixar
                                         </button>
                                     </div>
-                                    <button className="absolute bottom-4 right-4 bg-red-50 text-red-500 p-1.5 rounded-full hover:bg-red-100 transition-colors">
+                                    <button className="absolute bottom-4 right-4 bg-white/80 text-red-500 p-2 rounded-full hover:bg-red-50 transition-colors shadow-sm">
                                         <CloseIcon className="h-4 w-4" />
                                     </button>
                                 </div>
                                 
                                 {/* Footer Info */}
-                                <div className="p-5">
-                                    <h3 className="text-xs font-extrabold text-[#064e3b] dark:text-white uppercase tracking-wide mb-1">
+                                <div className="p-6">
+                                    <h3 className="text-sm font-extrabold text-[#064e3b] uppercase tracking-wide mb-2 line-clamp-1">
                                         {material.title}
                                     </h3>
-                                    <span className="text-[10px] font-bold text-brand-green-mid uppercase tracking-widest">
+                                    <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-green-50 text-[10px] font-bold text-brand-green-mid uppercase tracking-widest">
                                         {material.category}
                                     </span>
                                 </div>
@@ -843,38 +1307,101 @@ const Dashboard = ({ activeTab, setActiveTab, consultant }: { activeTab?: string
              )}
 
              {activeTab === 'unibrotos' && (
-                 <div className="bg-white dark:bg-brand-dark-card rounded-2xl shadow-sm p-8">
-                     <h2 className="text-2xl font-bold mb-6 text-brand-green-dark dark:text-white">UniBrotos</h2>
-                     <p className="text-gray-500">Plataforma de treinamento...</p>
+                 <div className="space-y-8">
+                    {/* Header */}
+                    <div className="flex flex-col md:flex-row justify-between items-center gap-6 md:gap-8">
+                        <div className="flex items-center gap-5">
+                            <div className="bg-[#1e1b4b] p-4 rounded-3xl text-white shadow-sm">
+                                <AcademicCapIcon className="h-8 w-8" />
+                            </div>
+                            <div>
+                                <h2 className="text-3xl font-serif font-bold text-brand-green-dark">UniBrotos</h2>
+                                <p className="text-gray-500 text-sm font-medium mt-1">Universidade Corporativa Brotos da Terra</p>
+                            </div>
+                        </div>
+                        <button className="bg-[#064e3b] hover:bg-[#064e3b]/90 text-white font-bold py-3 px-8 rounded-2xl text-sm shadow-lg transition-transform hover:scale-105 active:scale-95">
+                            + Adicionar Aula
+                        </button>
+                    </div>
+
+                    {/* Filter Tabs */}
+                    <div className="flex overflow-x-auto pb-4 gap-4 no-scrollbar mt-8">
+                        {uniCategories.map((cat) => (
+                            <button
+                                key={cat}
+                                onClick={() => setUniCategory(cat)}
+                                className={`px-6 py-3 rounded-xl text-sm font-bold whitespace-nowrap transition-all border ${
+                                    uniCategory === cat
+                                    ? 'bg-[#064e3b] text-white border-[#064e3b] shadow-md'
+                                    : 'bg-white text-gray-500 border-gray-100 hover:border-[#064e3b] hover:text-[#064e3b] hover:bg-gray-50'
+                                }`}
+                            >
+                                {cat}
+                            </button>
+                        ))}
+                    </div>
+
+                    {/* Lessons Grid (Mock) */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+                        {filteredLessons.map((lesson) => (
+                            <div key={lesson.id} className="bg-white rounded-[2rem] overflow-hidden shadow-sm hover:shadow-xl border border-gray-100 transition-all duration-300 group relative hover:-translate-y-1">
+                                {/* Thumbnail Area */}
+                                <div className={`aspect-video ${lesson.thumbnail} flex items-center justify-center relative group-hover:brightness-95 transition-all`}>
+                                    <PlayCircleIcon className="h-12 w-12 text-[#064e3b]/50 group-hover:text-[#064e3b] group-hover:scale-110 transition-all duration-300" />
+                                </div>
+                                
+                                {/* Info */}
+                                <div className="p-6">
+                                    <h3 className="text-sm font-extrabold text-[#064e3b] uppercase tracking-wide mb-2 line-clamp-1">
+                                        {lesson.title}
+                                    </h3>
+                                    <div className="flex justify-between items-center">
+                                        <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-blue-50 text-[10px] font-bold text-blue-600 uppercase tracking-widest">
+                                            {lesson.category}
+                                        </span>
+                                        <span className="text-xs text-gray-400 font-bold">{lesson.duration}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
                  </div>
              )}
 
              {activeTab === 'my_orders' && (
                  <div className="space-y-8">
-                    <div className="bg-white dark:bg-brand-dark-card rounded-2xl shadow-sm p-8">
-                        <h2 className="text-2xl font-bold mb-8 text-brand-green-dark dark:text-white">Meus Pedidos</h2>
+                    {/* Order Details Modal */}
+                    {selectedOrder && (
+                        <OrderDetailsModal 
+                            order={selectedOrder} 
+                            onClose={() => setSelectedOrder(null)} 
+                        />
+                    )}
+
+                    <div className="bg-white rounded-2xl shadow-sm p-8">
+                        <h2 className="text-2xl font-bold mb-8 text-brand-green-dark">Meus Pedidos</h2>
 
                         {/* Stats Grid - Moved from Overview */}
                         <div className={`grid grid-cols-1 md:grid-cols-2 ${isDistributor ? 'lg:grid-cols-4' : 'lg:grid-cols-3'} gap-6 mb-8`}>
-                            <div className="bg-white dark:bg-brand-dark-card p-6 rounded-2xl shadow-sm border-l-4 border-brand-green-mid hover:shadow-md transition-shadow">
+                            <div className="bg-white p-6 rounded-2xl shadow-sm border-l-4 border-brand-green-mid hover:shadow-md transition-shadow">
                                 <div className="flex justify-between items-start">
                                     <div>
-                                        <p className="text-gray-500 dark:text-gray-400 text-xs font-bold uppercase tracking-wider">Vendas Mês</p>
-                                        <h3 className="text-2xl font-bold text-brand-green-dark dark:text-white mt-1">R$ 1.260,00</h3>
+                                        <p className="text-gray-500 text-xs font-bold uppercase tracking-wider">Vendas Mês</p>
+                                        <h3 className="text-2xl font-bold text-brand-green-dark mt-1">R$ 1.260,00</h3>
                                     </div>
-                                    <div className="bg-green-100 dark:bg-green-900/30 p-2 rounded-lg">
+                                    <div className="bg-green-100 p-2 rounded-lg">
                                         <TrendingUpIcon />
                                     </div>
                                 </div>
                             </div>
-                            <div className="bg-white dark:bg-brand-dark-card p-6 rounded-2xl shadow-sm border-l-4 border-brand-earth hover:shadow-md transition-shadow">
+                            <div className="bg-white p-6 rounded-2xl shadow-sm border-l-4 border-brand-earth hover:shadow-md transition-shadow">
                                 <div className="flex justify-between items-start">
                                     <div>
-                                        <p className="text-gray-500 dark:text-gray-400 text-xs font-bold uppercase tracking-wider">Pontos</p>
+                                        <p className="text-gray-500 text-xs font-bold uppercase tracking-wider">Pontos</p>
                                         <h3 className="text-2xl font-bold text-brand-earth mt-1">300 pts</h3>
                                         <span className="text-[10px] text-gray-400 font-medium mt-1 block">100 pts/caixa</span>
                                     </div>
-                                    <div className="bg-orange-100 dark:bg-orange-900/30 p-2 rounded-lg">
+                                    <div className="bg-orange-100 p-2 rounded-lg">
                                         <SparklesIcon className="h-6 w-6 text-brand-earth" />
                                     </div>
                                 </div>
@@ -882,64 +1409,327 @@ const Dashboard = ({ activeTab, setActiveTab, consultant }: { activeTab?: string
                              {isDistributor && (
                                 <div 
                                     onClick={() => setActiveTab && setActiveTab('business')}
-                                    className="bg-white dark:bg-brand-dark-card p-6 rounded-2xl shadow-sm border-l-4 border-blue-500 hover:shadow-md transition-all cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800"
+                                    className="bg-white p-6 rounded-2xl shadow-sm border-l-4 border-blue-500 hover:shadow-md transition-all cursor-pointer hover:bg-gray-50"
                                 >
                                     <div className="flex justify-between items-start">
                                         <div>
-                                            <p className="text-gray-500 dark:text-gray-400 text-xs font-bold uppercase tracking-wider">Equipe</p>
-                                            <h3 className="text-2xl font-bold text-blue-600 dark:text-blue-400 mt-1">12 Membros</h3>
+                                            <p className="text-gray-500 text-xs font-bold uppercase tracking-wider">Equipe</p>
+                                            <h3 className="text-2xl font-bold text-blue-600 mt-1">12 Membros</h3>
                                         </div>
-                                        <div className="bg-blue-100 dark:bg-blue-900/30 p-2 rounded-lg">
+                                        <div className="bg-blue-100 p-2 rounded-lg">
                                             <UsersIcon />
                                         </div>
                                     </div>
                                 </div>
                             )}
-                            <div className="bg-white dark:bg-brand-dark-card p-6 rounded-2xl shadow-sm border-l-4 border-purple-500 hover:shadow-md transition-shadow">
+                            <div className="bg-white p-6 rounded-2xl shadow-sm border-l-4 border-purple-500 hover:shadow-md transition-shadow">
                                 <div className="flex justify-between items-start">
                                     <div>
-                                        <p className="text-gray-500 dark:text-gray-400 text-xs font-bold uppercase tracking-wider">Lucro Est.</p>
-                                        <h3 className="text-2xl font-bold text-purple-600 dark:text-purple-400 mt-1">R$ 630,00</h3>
+                                        <p className="text-gray-500 text-xs font-bold uppercase tracking-wider">Lucro Est.</p>
+                                        <h3 className="text-2xl font-bold text-purple-600 mt-1">R$ 630,00</h3>
                                     </div>
-                                    <div className="bg-purple-100 dark:bg-purple-900/30 p-2 rounded-lg">
+                                    <div className="bg-purple-100 p-2 rounded-lg">
                                         <BanknotesIcon />
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                        <p className="text-gray-500">Histórico de pedidos...</p>
+                        {/* Enhanced Order History Table */}
+                        <div className="border border-gray-100 rounded-3xl overflow-hidden mt-10 shadow-sm">
+                            <div className="bg-gray-50 px-6 py-5 border-b border-gray-100 flex flex-col sm:flex-row justify-between items-center gap-4">
+                                <h3 className="font-bold text-brand-green-dark text-lg">Histórico de Pedidos</h3>
+                                <div className="flex gap-3 w-full sm:w-auto">
+                                    <div className="relative flex-1 sm:flex-initial w-full sm:w-64">
+                                        <SearchIcon className="h-5 w-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                                        <input 
+                                            type="text" 
+                                            placeholder="Buscar pedido..." 
+                                            className="pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-brand-green-mid/20 focus:border-brand-green-mid w-full transition-all bg-white"
+                                        />
+                                    </div>
+                                    <button className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 bg-white text-gray-600 hover:border-brand-green-mid hover:text-brand-green-dark transition-all shadow-sm hover:shadow font-bold text-xs uppercase tracking-wide">
+                                        <FilterIcon className="h-4 w-4" />
+                                        <span className="hidden sm:inline">Filtrar</span>
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left border-collapse">
+                                    <thead>
+                                        <tr className="bg-gray-50/50">
+                                            <th className="py-4 px-6 text-[10px] font-extrabold text-gray-400 uppercase tracking-widest">Pedido</th>
+                                            <th className="py-4 px-6 text-[10px] font-extrabold text-gray-400 uppercase tracking-widest">Data</th>
+                                            <th className="py-4 px-6 text-[10px] font-extrabold text-gray-400 uppercase tracking-widest">Itens</th>
+                                            <th className="py-4 px-6 text-[10px] font-extrabold text-gray-400 uppercase tracking-widest">Status</th>
+                                            <th className="py-4 px-6 text-[10px] font-extrabold text-gray-400 uppercase tracking-widest text-right">Total</th>
+                                            <th className="py-4 px-6 text-[10px] font-extrabold text-gray-400 uppercase tracking-widest text-center">Ações</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100">
+                                        {orderHistory.map((order) => (
+                                            <tr key={order.id} className="hover:bg-gray-50 transition-colors group">
+                                                <td className="py-4 px-6 font-bold text-brand-green-dark text-sm">#{order.id}</td>
+                                                <td className="py-4 px-6 text-sm text-gray-500 font-medium">{order.date}</td>
+                                                <td className="py-4 px-6 text-sm text-gray-600">{order.items}</td>
+                                                <td className="py-4 px-6">
+                                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold border ${getStatusStyle(order.status)}`}>
+                                                        {order.status}
+                                                    </span>
+                                                </td>
+                                                <td className="py-4 px-6 text-sm font-bold text-gray-800 text-right">{order.total}</td>
+                                                <td className="py-4 px-6 text-center">
+                                                    <button 
+                                                        onClick={() => setSelectedOrder(order)}
+                                                        className="group flex items-center justify-center w-9 h-9 mx-auto rounded-xl bg-gray-50 text-gray-400 hover:bg-brand-green-mid hover:text-white hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200" 
+                                                        title="Ver Detalhes"
+                                                    >
+                                                        <EyeIcon className="h-5 w-5" />
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div className="p-4 border-t border-gray-100 bg-gray-50 flex justify-center hover:bg-gray-100 transition-colors cursor-pointer">
+                                <button className="text-xs font-bold text-gray-500 hover:text-brand-green-dark uppercase tracking-widest transition-colors w-full h-full py-2">
+                                    Ver todos os pedidos
+                                </button>
+                            </div>
+                        </div>
                     </div>
                  </div>
              )}
 
              {activeTab === 'new_order' && (
-                 <div className="bg-white dark:bg-brand-dark-card rounded-2xl shadow-sm p-8">
-                     <h2 className="text-2xl font-bold mb-6 text-brand-green-dark dark:text-white">Fazer Pedido</h2>
-                     <p className="text-gray-500">Catálogo de produtos...</p>
+                 <div className="space-y-8 animate-fade-in relative">
+                    {/* Free Shipping Toast Notification */}
+                    {showFreeShippingToast && (
+                        <div className="fixed top-24 right-4 md:right-8 bg-brand-green-mid text-white px-6 py-4 rounded-2xl shadow-2xl z-[60] flex items-center gap-4 animate-slide-left border border-white/20 backdrop-blur-md">
+                            <div className="bg-white/20 p-2 rounded-full">
+                                <TruckIcon className="h-6 w-6 text-white" />
+                            </div>
+                            <div>
+                                <h4 className="font-bold text-lg leading-none">Parabéns! 🎉</h4>
+                                <p className="text-sm font-medium opacity-90 mt-1">Você ganhou frete grátis!</p>
+                            </div>
+                            <button onClick={() => setShowFreeShippingToast(false)} className="text-white/70 hover:text-white ml-2">
+                                <CloseIcon className="h-5 w-5" />
+                            </button>
+                        </div>
+                    )}
+
+                    <div className="bg-[#0f172a] rounded-[2.5rem] p-8 md:p-12 shadow-2xl overflow-hidden relative">
+                        {/* Background Decor */}
+                        <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-brand-green-mid/20 blur-[120px] rounded-full pointer-events-none -translate-y-1/2 translate-x-1/2"></div>
+                        
+                        <h2 className="text-3xl font-serif font-bold text-white mb-2 relative z-10">Fazer Pedido</h2>
+                        <p className="text-gray-400 mb-10 relative z-10">Oportunidade Exclusiva para Consultores</p>
+
+                        <div className="flex flex-col lg:flex-row gap-12 relative z-10">
+                            
+                            {/* Product Showcase */}
+                            <div className="flex-1 bg-[#1e293b] rounded-3xl p-8 border border-gray-700/50 shadow-inner">
+                                <div className="flex flex-col md:flex-row gap-8 items-center">
+                                    <div className="shrink-0 w-full md:w-auto flex justify-center items-center relative">
+                                         {/* Glow effect behind */}
+                                         <div className="absolute inset-0 bg-brand-green-mid/40 blur-[40px] rounded-full"></div>
+                                         <img 
+                                            src="https://i.imgur.com/yNKoBxr.png" 
+                                            alt="Caixa Pomada de Copaíba" 
+                                            className="h-48 w-auto object-contain relative z-10 drop-shadow-[0_0_15px_rgba(255,255,255,0.4)] rounded-[2rem]" 
+                                         />
+                                    </div>
+                                    <div className="flex-1">
+                                        <span className="inline-block px-3 py-1 bg-yellow-400/20 text-yellow-400 rounded-full text-[10px] font-bold uppercase tracking-widest mb-3 border border-yellow-400/30">
+                                            Campeão de Vendas
+                                        </span>
+                                        <h3 className="text-2xl font-bold text-white mb-2">Caixa Pomada de Copaíba - 12 Unidades</h3>
+                                        <p className="text-gray-400 text-sm mb-6">Pomada Terapêutica de Alta Performance</p>
+                                        
+                                        <div className="flex items-baseline gap-3 mb-6">
+                                            <span className="text-4xl font-bold text-white">R$ 210,00</span>
+                                            <span className="text-brand-green-mid font-semibold">R$ 17,50 / unidade</span>
+                                        </div>
+
+                                        <ul className="space-y-3">
+                                            <li className="flex items-center gap-3 text-gray-300 text-sm">
+                                                <CheckCircleIcon className="h-5 w-5 text-brand-green-mid" />
+                                                Lucro de 100% na revenda (R$ 420,00 total)
+                                            </li>
+                                            <li className="flex items-center gap-3 text-gray-300 text-sm">
+                                                <CheckCircleIcon className="h-5 w-5 text-brand-green-mid" />
+                                                Pronta Entrega Imediata
+                                            </li>
+                                            <li className="flex items-center gap-3 text-gray-300 text-sm">
+                                                <CheckCircleIcon className="h-5 w-5 text-brand-green-mid" />
+                                                Suporte de Marketing Incluso
+                                            </li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Checkout / Calculator */}
+                            <div className="flex-1 lg:max-w-md bg-white rounded-3xl p-8 shadow-xl text-gray-800">
+                                <h4 className="text-xl font-bold text-brand-green-dark mb-6 border-b pb-4">Resumo do Pedido</h4>
+                                
+                                <div className="mb-8">
+                                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Quantidade de Caixas</label>
+                                    <div className="flex items-center gap-4 bg-gray-50 p-2 rounded-xl border border-gray-200 w-fit">
+                                        <button 
+                                            onClick={() => setOrderQty(Math.max(1, orderQty - 1))}
+                                            className="w-10 h-10 rounded-lg bg-white shadow-sm flex items-center justify-center text-gray-600 hover:bg-gray-100 hover:text-brand-green-dark transition-colors"
+                                        >
+                                            <MinusIcon />
+                                        </button>
+                                        <span className="text-xl font-bold w-8 text-center">{orderQty}</span>
+                                        <button 
+                                            onClick={() => setOrderQty(orderQty + 1)}
+                                            className="w-10 h-10 rounded-lg bg-brand-green-dark shadow-sm flex items-center justify-center text-white hover:bg-brand-green-mid transition-colors"
+                                        >
+                                            <PlusIcon />
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Free Shipping Progress */}
+                                <div className="mb-8 bg-gray-50 p-4 rounded-xl border border-gray-100">
+                                    <div className="flex justify-between items-center mb-2">
+                                        <span className="text-xs font-bold text-gray-500 uppercase">Frete Grátis</span>
+                                        <span className="text-xs font-bold text-brand-green-mid">
+                                            {orderQty >= FREE_SHIPPING_THRESHOLD ? 'Conquistado! 🎉' : `${orderQty}/${FREE_SHIPPING_THRESHOLD} caixas`}
+                                        </span>
+                                    </div>
+                                    <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
+                                        <div 
+                                            className="bg-brand-green-mid h-2.5 rounded-full transition-all duration-500 ease-out" 
+                                            style={{ width: `${progressToFree}%` }}
+                                        ></div>
+                                    </div>
+                                    {orderQty < FREE_SHIPPING_THRESHOLD && (
+                                        <p className="text-[10px] text-gray-400 mt-2 font-medium">Adicione mais {FREE_SHIPPING_THRESHOLD - orderQty} caixas para ganhar frete grátis.</p>
+                                    )}
+                                </div>
+
+                                {/* Shipping Calculator */}
+                                <div className="mb-8">
+                                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Calcular Frete</label>
+                                    <div className="flex gap-2">
+                                        <input 
+                                            type="text" 
+                                            placeholder="Seu CEP" 
+                                            value={cep}
+                                            onChange={(e) => setCep(e.target.value)}
+                                            className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 font-medium outline-none focus:border-brand-green-mid focus:ring-2 focus:ring-brand-green-mid/20 transition-all"
+                                        />
+                                        <button 
+                                            onClick={handleCalculateShipping}
+                                            disabled={loadingShipping}
+                                            className="bg-gray-800 text-white px-6 py-3 rounded-xl font-bold text-sm hover:bg-gray-700 disabled:opacity-50 transition-colors"
+                                        >
+                                            {loadingShipping ? '...' : 'Calcular'}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Total */}
+                                <div className="space-y-3 border-t pt-6">
+                                    <div className="flex justify-between text-sm text-gray-500">
+                                        <span>Subtotal</span>
+                                        <span>{formatCurrency(orderQty * BOX_PRICE)}</span>
+                                    </div>
+                                    <div className="flex justify-between text-sm text-gray-500">
+                                        <span>Frete</span>
+                                        <span className={shippingCost === 0 ? 'text-green-600 font-bold' : ''}>
+                                            {shippingCost === null ? '--' : (shippingCost === 0 ? 'Grátis' : formatCurrency(shippingCost))}
+                                        </span>
+                                    </div>
+                                    <div className="flex justify-between items-center text-2xl font-bold text-gray-900 pt-2">
+                                        <span>Total</span>
+                                        <span>{formatCurrency(total)}</span>
+                                    </div>
+                                </div>
+
+                                <button className="w-full mt-8 bg-brand-green-dark hover:bg-brand-green-mid text-white font-bold py-4 rounded-xl shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all duration-200 uppercase tracking-wide flex items-center justify-center gap-3">
+                                    <ShoppingCartIcon className="h-5 w-5" />
+                                    Finalizar Pedido
+                                </button>
+
+                            </div>
+                        </div>
+                    </div>
                  </div>
              )}
              
              {activeTab === 'invite' && (
-                 <div className="bg-white dark:bg-brand-dark-card rounded-2xl shadow-sm p-8">
-                     <h2 className="text-2xl font-bold mb-6 text-brand-green-dark dark:text-white">Convidar Consultor</h2>
-                     <p className="text-gray-500">Link de cadastro e convites...</p>
+                 <div className="space-y-8 animate-fade-in">
+                     {/* Header */}
+                    <div className="flex items-center gap-5 mb-8">
+                        <div className="bg-blue-100 p-4 rounded-3xl text-blue-500 shadow-sm">
+                            <UserPlusIcon className="h-8 w-8" />
+                        </div>
+                        <div>
+                            <h2 className="text-3xl font-serif font-bold text-brand-green-dark">Convidar Consultor</h2>
+                            <p className="text-gray-500 text-sm font-medium mt-1">Expanda sua equipe e aumente seus ganhos.</p>
+                        </div>
+                    </div>
+
+                    <div className="bg-white rounded-[2rem] p-8 shadow-lg border border-gray-100 max-w-2xl">
+                        <h3 className="text-xl font-bold text-brand-green-dark mb-4">Seu Link de Indicação</h3>
+                        <p className="text-gray-500 mb-6">Compartilhe este link com novos consultores. Quando eles se cadastrarem, você será automaticamente vinculado como distribuidor em qualificação.</p>
+
+                        <div className="flex flex-col sm:flex-row gap-4">
+                            <div className="flex-1 relative">
+                                <input 
+                                    type="text" 
+                                    readOnly 
+                                    value={inviteLink}
+                                    className="w-full bg-gray-50 border border-gray-200 text-gray-600 px-5 py-4 rounded-xl font-medium focus:outline-none focus:ring-2 focus:ring-brand-green-mid/20"
+                                />
+                            </div>
+                            <button 
+                                onClick={handleCopyLink}
+                                className={`px-8 py-4 rounded-xl font-bold text-white transition-all duration-300 flex items-center justify-center gap-2 shadow-lg ${
+                                    copied ? 'bg-green-500' : 'bg-brand-green-dark hover:bg-brand-green-mid hover:-translate-y-1'
+                                }`}
+                            >
+                                {copied ? <CheckCircleIcon className="h-5 w-5" /> : <ClipboardCopyIcon className="h-5 w-5" />}
+                                {copied ? 'Copiado!' : 'Copiar Link'}
+                            </button>
+                        </div>
+
+                        <div className="mt-8 pt-8 border-t border-gray-100">
+                             <h4 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-4">Compartilhar via</h4>
+                             <a 
+                                href={`https://wa.me/?text=Olá! Gostaria de te convidar para ser um consultor na Brotos da Terra. Cadastre-se pelo meu link: ${encodeURIComponent(inviteLink)}`}
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-3 bg-[#25D366] text-white px-6 py-3 rounded-xl font-bold hover:bg-[#20bd5a] transition-colors shadow-md hover:shadow-lg"
+                             >
+                                 <WhatsAppIcon />
+                                 WhatsApp
+                             </a>
+                        </div>
+                    </div>
                  </div>
              )}
 
              {activeTab === 'business' && (
-                 <div className="bg-white dark:bg-brand-dark-card rounded-2xl shadow-sm p-8">
+                 <div className="bg-white rounded-2xl shadow-sm p-8">
                      <div className="flex justify-between items-center mb-8">
                         <div>
-                            <h2 className="text-2xl font-bold text-brand-green-dark dark:text-white">Meu Negócio</h2>
+                            <h2 className="text-2xl font-bold text-brand-green-dark">Meu Negócio</h2>
                             <p className="text-gray-500 text-sm mt-1">Gerenciamento completo da sua equipe.</p>
                         </div>
                         <div className="flex gap-4">
                             <div className="text-right">
                                 <p className="text-xs text-gray-400 font-bold uppercase">Total Consultores</p>
-                                <p className="text-xl font-bold text-gray-800 dark:text-white">125</p>
+                                <p className="text-xl font-bold text-gray-800">125</p>
                             </div>
-                            <div className="text-right border-l pl-4 border-gray-200 dark:border-gray-700">
+                            <div className="text-right border-l pl-4 border-gray-200">
                                 <p className="text-xs text-gray-400 font-bold uppercase">Ativos Hoje</p>
                                 <p className="text-xl font-bold text-brand-green-mid">12</p>
                             </div>
@@ -950,7 +1740,7 @@ const Dashboard = ({ activeTab, setActiveTab, consultant }: { activeTab?: string
                      <div className="overflow-x-auto">
                         <table className="w-full text-left border-collapse">
                             <thead>
-                                <tr className="border-b border-gray-200 dark:border-gray-700">
+                                <tr className="border-b border-gray-200">
                                     <th className="py-4 px-2 text-xs font-bold text-gray-500 uppercase tracking-wider">Consultor</th>
                                     <th className="py-4 px-2 text-xs font-bold text-gray-500 uppercase tracking-wider">ID</th>
                                     <th className="py-4 px-2 text-xs font-bold text-gray-500 uppercase tracking-wider">Nível</th>
@@ -961,12 +1751,12 @@ const Dashboard = ({ activeTab, setActiveTab, consultant }: { activeTab?: string
                             </thead>
                             <tbody>
                                 {teamMembers.map((member) => (
-                                    <tr key={member.id} className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                                    <tr key={member.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
                                         <td className="py-4 px-2 flex items-center gap-3">
-                                            <div className="h-8 w-8 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-xs font-bold">
+                                            <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center text-xs font-bold">
                                                 {member.name.charAt(0)}
                                             </div>
-                                            <span className="font-semibold text-gray-800 dark:text-gray-200">{member.name}</span>
+                                            <span className="font-semibold text-gray-800">{member.name}</span>
                                         </td>
                                         <td className="py-4 px-2 text-sm text-gray-500">{member.id}</td>
                                         <td className="py-4 px-2 text-sm">
@@ -980,9 +1770,9 @@ const Dashboard = ({ activeTab, setActiveTab, consultant }: { activeTab?: string
                                                 {member.status}
                                              </span>
                                         </td>
-                                        <td className="py-4 px-2 text-sm font-bold text-gray-700 dark:text-gray-300">{member.sales}</td>
+                                        <td className="py-4 px-2 text-sm font-bold text-gray-700">{member.sales}</td>
                                         <td className="py-4 px-2 text-right">
-                                            <button className="text-green-600 hover:text-green-700 p-2 rounded-full hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors">
+                                            <button className="text-green-600 hover:text-green-700 p-2 rounded-full hover:bg-green-50 transition-colors">
                                                 <WhatsAppIcon />
                                             </button>
                                         </td>
@@ -995,9 +1785,162 @@ const Dashboard = ({ activeTab, setActiveTab, consultant }: { activeTab?: string
              )}
 
              {activeTab === 'financial' && (
-                 <div className="bg-white dark:bg-brand-dark-card rounded-2xl shadow-sm p-8">
-                     <h2 className="text-2xl font-bold mb-6 text-brand-green-dark dark:text-white">Financeiro</h2>
-                     <p className="text-gray-500">Extrato, bônus e saques...</p>
+                 <div className="space-y-8 animate-fade-in">
+                    {/* Header */}
+                    <div className="flex flex-col md:flex-row justify-between items-center gap-6">
+                         <div className="flex items-center gap-5">
+                            <div className="bg-brand-green-dark p-4 rounded-3xl text-white shadow-sm">
+                                <BanknotesIcon className="h-8 w-8" />
+                            </div>
+                            <div>
+                                <h2 className="text-3xl font-serif font-bold text-brand-green-dark">Financeiro</h2>
+                                <p className="text-gray-500 text-sm font-medium mt-1">Gestão de bônus e dados bancários.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                        {/* Left Column: Withdrawal & Balance */}
+                        <div className="bg-[#1F2937] text-white rounded-[2rem] p-8 md:p-10 shadow-xl flex flex-col justify-between relative overflow-hidden">
+                             {/* Background Accents */}
+                             <div className="absolute top-0 right-0 w-64 h-64 bg-[#4ADE80]/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
+                             
+                             <div>
+                                 <p className="text-gray-400 text-sm font-bold uppercase tracking-widest mb-2">Saldo Disponível</p>
+                                 <h3 className="text-5xl font-bold text-white tracking-tight mb-1">R$ 3.450,00</h3>
+                                 <p className="text-[#4ADE80] text-sm font-medium flex items-center gap-2 mt-2">
+                                     <TrendingUpIcon className="h-4 w-4" />
+                                     +12% em relação ao mês anterior
+                                 </p>
+                             </div>
+
+                             <div className="mt-12">
+                                 <button className="w-full bg-[#4ADE80] hover:bg-[#22c55e] text-[#064e3b] font-bold py-4 rounded-xl shadow-lg hover:shadow-[#4ADE80]/30 transition-all transform hover:-translate-y-1">
+                                     Solicitar Saque
+                                 </button>
+                                 <p className="text-center text-xs text-gray-500 mt-4">Saques processados em até 2 dias úteis.</p>
+                             </div>
+                        </div>
+
+                        {/* Right Column: Bonus Calculator */}
+                        <div className="bg-white rounded-[2rem] p-8 md:p-10 shadow-lg border border-gray-100">
+                             <div className="flex items-center gap-3 mb-6">
+                                 <CalculatorIcon className="h-6 w-6 text-brand-green-dark" />
+                                 <h3 className="text-xl font-bold text-brand-green-dark">Calculadora de Bônus</h3>
+                             </div>
+
+                             <div className="mb-8">
+                                 <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Volume de Vendas da Equipe</label>
+                                 <input
+                                    type="range"
+                                    min="0"
+                                    max="50000"
+                                    step="1000"
+                                    value={bonusVolume}
+                                    onChange={(e) => setBonusVolume(parseInt(e.target.value))}
+                                    className="w-full h-3 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-brand-green-mid hover:accent-brand-green-dark transition-all mb-4"
+                                />
+                                <div className="flex justify-between items-center">
+                                    <span className="text-2xl font-bold text-gray-800">{formatCurrency(bonusVolume)}</span>
+                                    <span className="text-xs font-bold text-gray-400 bg-gray-100 px-2 py-1 rounded">Volume Mensal</span>
+                                </div>
+                             </div>
+
+                             <div className="bg-gray-50 rounded-2xl p-6 border border-gray-200">
+                                 <div className="flex justify-between items-center mb-2">
+                                     <span className="text-sm font-bold text-gray-500">Bônus Estimado</span>
+                                     <span className="text-xs font-bold text-green-600 bg-green-100 px-2 py-0.5 rounded-full">
+                                         {bonusVolume < 5000 ? '3%' : bonusVolume < 15000 ? '5%' : bonusVolume < 30000 ? '7%' : '10%'}
+                                     </span>
+                                 </div>
+                                 <h4 className="text-3xl font-bold text-brand-green-dark">
+                                     {formatCurrency(calculateBonus(bonusVolume))}
+                                 </h4>
+                                 <p className="text-xs text-gray-400 mt-2">*Estimativa baseada no plano de carreira atual.</p>
+                             </div>
+                        </div>
+                    </div>
+
+                    {/* Registration Form */}
+                    <div className="bg-white rounded-[2rem] p-8 md:p-10 shadow-sm border border-gray-100">
+                        <div className="flex items-center gap-3 mb-8 border-b border-gray-100 pb-4">
+                            <CreditCardIcon className="h-6 w-6 text-brand-green-dark" />
+                            <h3 className="text-xl font-bold text-brand-green-dark">Dados para Recebimento</h3>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                             {/* CNPJ */}
+                             <div className="space-y-4">
+                                <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest">CNPJ</label>
+                                <div className="relative">
+                                    <BriefcaseIcon className="h-5 w-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                                    <input 
+                                        type="text" 
+                                        placeholder="00.000.000/0000-00" 
+                                        value={bankInfo.cnpj}
+                                        onChange={(e) => setBankInfo({...bankInfo, cnpj: e.target.value})}
+                                        className="pl-10 w-full bg-gray-50 border border-gray-200 rounded-xl py-3 font-medium outline-none focus:border-brand-green-mid focus:ring-2 focus:ring-brand-green-mid/20 transition-all"
+                                        required
+                                    />
+                                </div>
+                             </div>
+
+                             {/* Pix Key */}
+                             <div className="space-y-4">
+                                <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest">Chave Pix</label>
+                                <div className="relative">
+                                    <QrCodeIcon className="h-5 w-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                                    <input 
+                                        type="text" 
+                                        placeholder="CPF, E-mail ou Telefone" 
+                                        value={bankInfo.pixKey}
+                                        onChange={(e) => setBankInfo({...bankInfo, pixKey: e.target.value})}
+                                        className="pl-10 w-full bg-gray-50 border border-gray-200 rounded-xl py-3 font-medium outline-none focus:border-brand-green-mid focus:ring-2 focus:ring-brand-green-mid/20 transition-all"
+                                    />
+                                </div>
+                             </div>
+
+                             {/* Bank Details */}
+                             <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-6">
+                                <div className="space-y-2">
+                                     <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest">Banco</label>
+                                     <input 
+                                        type="text" 
+                                        placeholder="Ex: Nubank, Itaú" 
+                                        value={bankInfo.bankName}
+                                        onChange={(e) => setBankInfo({...bankInfo, bankName: e.target.value})}
+                                        className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 px-4 font-medium outline-none focus:border-brand-green-mid focus:ring-2 focus:ring-brand-green-mid/20 transition-all"
+                                     />
+                                </div>
+                                <div className="space-y-2">
+                                     <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest">Agência</label>
+                                     <input 
+                                        type="text" 
+                                        placeholder="0000" 
+                                        value={bankInfo.agency}
+                                        onChange={(e) => setBankInfo({...bankInfo, agency: e.target.value})}
+                                        className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 px-4 font-medium outline-none focus:border-brand-green-mid focus:ring-2 focus:ring-brand-green-mid/20 transition-all"
+                                     />
+                                </div>
+                                <div className="space-y-2">
+                                     <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest">Conta</label>
+                                     <input 
+                                        type="text" 
+                                        placeholder="00000-0" 
+                                        value={bankInfo.account}
+                                        onChange={(e) => setBankInfo({...bankInfo, account: e.target.value})}
+                                        className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 px-4 font-medium outline-none focus:border-brand-green-mid focus:ring-2 focus:ring-brand-green-mid/20 transition-all"
+                                     />
+                                </div>
+                             </div>
+                        </div>
+
+                        <div className="mt-8 flex justify-end">
+                            <button className="bg-brand-green-dark hover:bg-brand-green-mid text-white font-bold py-3 px-8 rounded-xl shadow-lg transition-all hover:-translate-y-0.5">
+                                Salvar Dados
+                            </button>
+                        </div>
+                    </div>
                  </div>
              )}
         </div>
@@ -1022,6 +1965,12 @@ export const ConsultantApp = () => {
             }
         };
         checkUser();
+
+        // Check for referral in URL to auto-open registration
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('ref')) {
+            setIsRegistering(true);
+        }
     }, []);
 
     const handleLogout = async () => {
