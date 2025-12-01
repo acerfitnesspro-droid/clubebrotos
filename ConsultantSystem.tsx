@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from './lib/supabaseClient';
 import { 
@@ -165,22 +164,27 @@ const JoAssistant = ({ setActiveTab, consultant }: { setActiveTab: (tab: string)
             utterance.lang = 'pt-BR';
             
             const voices = window.speechSynthesis.getVoices();
-            // Prioritize known female voices
+            
+            // Lista prioritária de vozes femininas conhecidas por sistema
             const femaleVoice = voices.find(v => 
-                v.name.includes('Google Português do Brasil') || 
-                v.name.includes('Microsoft Maria') || 
-                v.name.includes('Luciana')
+                v.name.includes('Google Português do Brasil') || // Chrome/Android (Geralmente feminina)
+                v.name.includes('Microsoft Maria') ||            // Windows (Edge)
+                v.name.includes('Luciana') ||                    // iOS/macOS
+                v.name.includes('Joana')                         // macOS
             );
             
-            // Fallback to Google PT or any PT
-            const selectedVoice = femaleVoice || voices.find(v => v.lang.includes('pt') && v.name.includes('Google')) || voices.find(v => v.lang.includes('pt'));
+            // Fallback: Tenta encontrar qualquer voz PT-BR se as específicas não existirem
+            const selectedVoice = femaleVoice || voices.find(v => v.lang.includes('pt-BR'));
 
             if (selectedVoice) {
                 utterance.voice = selectedVoice;
             }
             
-            // Slight pitch adjustment to ensure feminine tone
-            utterance.pitch = 1.1;
+            // Ajuste de pitch (tom) para garantir sonoridade feminina
+            // 1.2 eleva o tom, tornando-o mais feminino e jovem
+            utterance.pitch = 1.2;
+            // Ajuste leve na velocidade para naturalidade
+            utterance.rate = 1.05;
 
             window.speechSynthesis.speak(utterance);
         }
@@ -2058,4 +2062,3 @@ export const ConsultantApp = () => {
 
     return <LoginScreen onLogin={setUser} onRegisterClick={() => setIsRegistering(true)} />;
 };
-    
